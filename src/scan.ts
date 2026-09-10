@@ -73,12 +73,52 @@ export interface Survey {
 }
 
 const PREVIEW_MAX = 48;
+/** Tool-call hint lines carry the locating argument, so they get more room. */
+const CALL_HINT_MAX = 96;
+/** Argument keys whose value is the natural locator for a call. */
+const HINT_KEYS = ["file_path", "path", "pattern"];
 
 /** Collapse whitespace and cap to the preview budget. */
 function toPreviewLine(text: string): string {
 	const collapsed = text.trim().replace(/[\t\n\r]+/g, " ");
 	if (collapsed.length === 0) return "";
 	return collapsed.length <= PREVIEW_MAX ? collapsed : collapsed.slice(0, PREVIEW_MAX - 1) + "…";
+}
+
+/** First meaningful segment of a shell command, for preview purposes. */
+function firstCommandSegment(command: string): string {
+	const cut = command.split(/[\n;|&]/)[0] ?? "";
+	return cut.trim();
+}
+
+/**
+ * One tool call as a map hint: name plus its locating argument when the raw
+ * JSON carries one (edit/read → file path, grep → pattern, bash → first
+ * command segment). Malformed or truncated arguments degrade to the bare
+ * name — the map must never fail over a preview.
+ */
+function callHint(call: Extract<ContentBlock, { type: "tool-call" }>): string {
+	let parsed: Record<string, unknown> | null = null;
+	if (typeof call.arguments === "string" && call.arguments.length > 0) {
+		try {
+			const value: unknown = JSON.parse(call.arguments);
+			if (typeof value === "object" && value !== null) parsed = value as Record<string, unknown>;
+		} catch {
+			// Raw JSON string as produced by the model may be truncated — no hint.
+		}
+	}
+	if (parsed !== null) {
+		for (const key of HINT_KEYS) {
+			const value = parsed[key];
+			if (typeof value === "string" && value.trim().length > 0) return call.name + " " + toPreviewLine(value);
+		}
+		const command = parsed.command ?? parsed.cmd;
+		if (typeof command === "string") {
+			const segment = firstCommandSegment(command);
+			if (segment.length > 0) return call.name + " (" + toPreviewLine(segment) + ")";
+		}
+	}
+	return call.name;
 }
 
 /** Extract text from content blocks for preview purposes. */
@@ -100,7 +140,10 @@ function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, strin
 	}
 	if (message.role === "assistant") {
 		const calls = message.content.filter((block): block is Extract<ContentBlock, { type: "tool-call" }> => block.type === "tool-call");
-		if (calls.length > 0) return { preview: "→ " + calls.map((call) => call.name).join(", "), kind: "assistant" };
+		if (calls.length > 0) {
+			const joined = calls.map(callHint).join(", ");
+			return { preview: joined.length <= CALL_HINT_MAX ? "→ " + joined : "→ " + joined.slice(0, CALL_HINT_MAX - 1) + "…", kind: "assistant" };
+		}
 		return { preview: toPreviewLine(textOfBlocks(message.content)), kind: "assistant" };
 	}
 	return { preview: toPreviewLine(textOfBlocks(message.content)), kind: "user" };

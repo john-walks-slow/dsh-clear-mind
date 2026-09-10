@@ -144,3 +144,33 @@ test("scanSurface previews stay single-line and bounded", () => {
 	assert.ok(!preview.includes("\n"));
 	assert.ok(preview.length <= 50, "preview bounded: " + preview.length);
 });
+
+test("assistant call previews carry locating argument hints", () => {
+	const session = Session.create("s1" as never);
+	appendTurn(session, 1, [
+		{ user: "rework the config loader" },
+		{
+			calls: [
+				{ name: "edit", args: JSON.stringify({ file_path: "src/config/loadSettings.ts" }), result: "updated" },
+				{ name: "bash", args: JSON.stringify({ command: "npm test --filter config\nextra" }), result: "ok" },
+				{ name: "grep", args: JSON.stringify({ pattern: "loadSettings", path: "src" }), result: "3 hits" }
+			]
+		},
+		{
+			calls: [
+				{ name: "bash", args: "{broken json", result: "ok" },
+				{ name: "bash", result: "ok" }
+			]
+		}
+	]);
+	const survey = scanSurface(session, replicaMeter());
+	const first = survey.nodes[1].preview;
+	assert.match(first, /edit src\/config\/loadSettings\.ts/);
+	assert.match(first, /bash \(npm test --filter config\)/);
+	assert.match(first, /grep src/);
+	assert.ok(first.length <= 96 + 2, "call hint line bounded");
+	// malformed and empty arguments degrade to the bare tool name
+	const second = survey.nodes[5].preview;
+	assert.equal(second, "→ bash, bash");
+	assert.ok(!second.includes("undefined"), "no undefined leaks from broken args");
+});

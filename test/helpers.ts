@@ -61,7 +61,7 @@ export function nextCallId(): string {
 
 export interface TranscriptStep {
 	user?: string;
-	calls?: { name: string; result: string; isError?: boolean; meta?: unknown }[];
+	calls?: { name: string; result: string; isError?: boolean; meta?: unknown; args?: string }[];
 	text?: string;
 }
 
@@ -79,7 +79,7 @@ export function appendTurn(session: Session, turn: number, script: readonly Tran
 		}
 		if (step.calls !== undefined && step.calls.length > 0) {
 			const blocks: ContentBlock[] = step.calls.map((call) => ({
-				type: "tool-call", id: ToolCallId(nextCallId()), name: call.name, arguments: "{}"
+				type: "tool-call", id: ToolCallId(nextCallId()), name: call.name, arguments: call.args ?? "{}"
 			}));
 			const assistant = createAssistantMessage({ content: blocks, source: { provider: "test-provider", model: "test-model" } });
 			session.append("assistant/message", { turn, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });

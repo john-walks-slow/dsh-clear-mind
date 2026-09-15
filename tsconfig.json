@@ -4,7 +4,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": [
-      "ES2022"
+      "ES2022",
+      "DOM"
     ],
     "strict": true,
     "esModuleInterop": true,
@@ -13,12 +14,14 @@
     "declaration": false,
     "outDir": "./dist",
     "rootDir": ".",
+    "jsx": "react-jsx",
     "types": [
       "node"
     ]
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "test/**/*.ts"
   ]
 }

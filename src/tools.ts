@@ -14,18 +14,14 @@ import { scanSurface } from "./scan.js";
 import type { MeterPort, Survey } from "./scan.js";
 import { renderSurvey } from "./render.js";
 import { commitClearMind } from "./commit.js";
+import { tryAgentRoute } from "./route.js";
 import type { ClearMindConfig } from "./config.js";
 
-/** Resolve the durable provider/model route for the calling agent's session. */
-function routeOf(agent: Agent): { provider: string; model: string } {
-	const config = agent.session.requestHeader()?.config;
-	if (config !== undefined && typeof config.provider === "string" && typeof config.model === "string") {
-		return { provider: config.provider, model: config.model };
-	}
-	if (agent.options.provider !== undefined && agent.options.model !== undefined) {
-		return { provider: agent.options.provider, model: agent.options.model };
-	}
-	throw new Error("clear_mind: the session has no routed provider/model on record.");
+/** Resolve the durable provider/model route, throwing when none is on record. */
+function requireRoute(agent: Agent): { provider: string; model: string } {
+	const route = tryAgentRoute(agent);
+	if (route === undefined) throw new Error("clear_mind: the session has no routed provider/model on record.");
+	return route;
 }
 
 function requireAgent(agent: Agent | undefined): Agent {
@@ -157,7 +153,7 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 		async execute(args, exec) {
 			const agent = requireAgent(exec.agent);
 			return commitClearMind(
-				{ session: agent.session, meter, config, route: routeOf(agent) },
+				{ session: agent.session, meter, config, route: requireRoute(agent) },
 				args.start,
 				args.end,
 				args.notes

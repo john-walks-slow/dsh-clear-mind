@@ -8,9 +8,11 @@
  *     itself distills, through the platform's native compaction transaction
  *     (start / summary / replace / end) so the GUI, token meter, and future
  *     auto-compactions all understand it.
- * Plus the clear-mind runtime skill teaching WHEN and HOW to clear, and a
+ * Plus the clear-mind runtime skill teaching WHEN and HOW to clear, a
  * step-boundary self-collapse that folds each clear_mind call+result into a
- * one-line tombstone once the checkpoint has landed.
+ * one-line tombstone once the checkpoint has landed, and a proactive reminder
+ * that nudges the model when the context grows long or a turn runs too many
+ * steps.
  *
  * Human-side history is never touched: the append-only log is the source of
  * truth and the GUI transcript renders append-origin events, so every clear
@@ -24,13 +26,16 @@ import type { UserMessage } from "@deepseek-ai/dsh-llm";
 // emitting a runtime import (dsh-skill stays a devDependency).
 import type {} from "@deepseek-ai/dsh-skill";
 import { Config, resolveConfig } from "./config.js";
+import type { ClearMindConfig } from "./config.js";
 import type { MeterPort } from "./scan.js";
 import { mindMapTool, clearMindTool } from "./tools.js";
 import { CLEAR_MIND_SKILL } from "./skill.js";
 import { collapseClearMindRuns } from "./collapse.js";
+import { evaluateReminder, buildReminderMessage } from "./reminder.js";
+import type { AgentReminderState, ModelInfoPort } from "./reminder.js";
 
 export const name = "dsh-clear-mind";
-export const inject = ["tools", "tokenMeter", "skills", "agents"];
+export const inject = ["tools", "tokenMeter", "skills", "agents", "llm"];
 export { Config };
 
 export function apply(ctx: Context, config: Record<string, unknown> = {}) {
@@ -39,6 +44,17 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		measure: (session) => ctx.tokenMeter.measure(session),
 		estimateMessage: (message) => ctx.tokenMeter.estimateMessage(message)
 	};
+	const modelInfo: ModelInfoPort = {
+		resolveContextWindow: async (provider, model, signal) => {
+			try {
+				const info = await ctx.llm.resolveModelInfo(provider, model, signal);
+				return info?.context?.contextWindow;
+			} catch {
+				return undefined;
+			}
+		}
+	};
+	const reminderStates = new WeakMap<Agent, AgentReminderState>();
 
 	// Register both tools on every root agent exactly once. Subagents keep the
 	// platform's automatic compaction only — their context is short-lived by
@@ -67,14 +83,43 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		source: "runtime"
 	});
 
-	// Self-collapse at the next step boundary: fold every completed clear_mind
-	// call+result pair into a one-line tombstone (guarded, stateless scan).
+	// Optional settings namespace registration: lets the Web UI read and
+	// hot-edit every config knob without a restart. Degrades to a logged
+	// no-op on headless profiles that lack a settings service.
+	const settings = ctx.get("settings", false);
+	if (settings !== undefined && typeof (settings as { register?: unknown }).register === "function") {
+		try {
+			const scope = (settings as { register: (ns: string, schema: unknown, opts?: unknown) => { watch: (cb: (next: ClearMindConfig) => void) => () => void; get: () => ClearMindConfig } }).register("clear-mind", Config, { base: resolved });
+			scope.watch((next: ClearMindConfig) => {
+				try {
+					Object.assign(resolved, resolveConfig(next));
+					ctx.logger.info("dsh-clear-mind: settings hot-applied");
+				} catch (error) {
+					// Cross-field validation can reject a user save (e.g.
+					// minNotesChars >= maxNotesChars). Keep the previous live
+					// config so the runtime never drifts from a consistent state;
+					// the settings UI surfaces its own cross-field error.
+					ctx.logger.warn("dsh-clear-mind: settings update rejected (" + (error instanceof Error ? error.message : String(error)) + "); keeping previous live config");
+				}
+			});
+			Object.assign(resolved, resolveConfig(scope.get()));
+			ctx.logger.info("dsh-clear-mind: settings namespace `clear-mind` registered; hot-reload enabled");
+		} catch (error) {
+			ctx.logger.warn("dsh-clear-mind: settings registration failed (" + (error instanceof Error ? error.message : String(error)) + ")");
+		}
+	} else {
+		ctx.logger.info("dsh-clear-mind: no settings service composed; configuration UI and hot-reload disabled");
+	}
+
+	// Self-collapse + proactive reminder at the step boundary. The self-collapse
+	// runs BEFORE next() (it mutates the surface the downstream listeners see);
+	// the reminder runs AFTER next() (it folds its message into the enter
+	// decision the loop is about to execute).
 	ctx.on("agent/pre-step", async (
 		payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal },
 		next: () => Promise<PreStepDecision>
 	): Promise<PreStepDecision> => {
-		// Only registered root agents can ever carry a clear_mind call; skipping
-		// everyone else keeps the per-step scan off subagents entirely.
+		// Self-collapse: fold every completed clear_mind call+result pair.
 		if (resolved.selfCollapse && registered.has(payload.agent)) {
 			try {
 				collapseClearMindRuns(payload.agent.session, meter);
@@ -82,7 +127,23 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 				ctx.logger.warn("dsh-clear-mind: self-collapse skipped (" + (error instanceof Error ? error.message : String(error)) + ")");
 			}
 		}
-		return next();
+		const decision = await next();
+		if (decision.kind === "reject" || payload.signal.aborted) return decision;
+		if (!registered.has(payload.agent)) return decision;
+		// Proactive reminder: nudge the model when context is long or a turn
+		// has run too many steps.
+		try {
+			const trigger = await evaluateReminder(
+				resolved, payload.agent, meter, modelInfo,
+				payload.turn, payload.step, payload.signal, reminderStates
+			);
+			if (trigger !== null) {
+				return { ...decision, messages: [...decision.messages, buildReminderMessage(trigger)] };
+			}
+		} catch (error) {
+			ctx.logger.warn("dsh-clear-mind: reminder evaluation skipped (" + (error instanceof Error ? error.message : String(error)) + ")");
+		}
+		return decision;
 	});
 
 	ctx.logger.info("dsh-clear-mind: registered mind_map + clear_mind for root agents; skill clear-mind available");

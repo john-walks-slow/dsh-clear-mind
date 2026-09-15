@@ -1,28 +1,37 @@
 {
   "name": "dsh-clear-mind",
   "version": "0.1.0",
-  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface, clear_mind replaces a chosen span with a model-written checkpoint, and the clear-mind skill teaches when and how to clear one's mind.",
+  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface, clear_mind replaces a chosen span with a model-written checkpoint, the clear-mind skill teaches when and how to clear one's mind, and a proactive reminder nudges the model when the context grows long.",
   "type": "module",
   "main": "./dist/src/index.js",
   "exports": {
     ".": "./dist/src/index.js",
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
     "dist/src",
+    "lib/client.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "rm -rf dist lib/client.js && tsc -p tsconfig.build.json && node scripts/build-client.mjs",
+    "build:client": "node scripts/build-client.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "keywords": [
@@ -49,7 +58,13 @@
     "@deepseek-ai/dsh-token-meter": "0.1.2-rc.1",
     "@deepseek-ai/dsh-skill": "0.1.2-rc.1",
     "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.2-rc.1",
     "@types/node": "^22.20.1",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.9.3"
   }
 }

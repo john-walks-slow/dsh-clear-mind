@@ -16,10 +16,10 @@ export const Config = z.object({
 	maxNotesChars: z.number().step(1).min(1).default(16000),
 	selfCollapse: z.boolean().default(true),
 	reminderEnabled: z.boolean().default(true),
-	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70),
+	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.90),
 	reminderThresholdTokens: z.number().step(1).min(0).default(0),
-	reminderThresholdSteps: z.number().step(1).min(1).default(15),
-	reminderStepInterval: z.number().step(1).min(1).default(5)
+	reminderThresholdSteps: z.number().step(1).min(1).default(40),
+	reminderStepInterval: z.number().step(1).min(1).default(10)
 });
 
 export interface ClearMindConfig {
@@ -47,7 +47,7 @@ export function resolveConfig(raw: Partial<ClearMindConfig> | Record<string, unk
 		return parsed;
 	};
 	const ratio = (() => {
-		const parsed = typeof value.reminderThresholdRatio === "number" ? value.reminderThresholdRatio : 0.70;
+		const parsed = typeof value.reminderThresholdRatio === "number" ? value.reminderThresholdRatio : 0.90;
 		if (!(parsed > 0 && parsed <= 1)) throw new Error("dsh-clear-mind config: reminderThresholdRatio must be in (0, 1]");
 		return parsed;
 	})();
@@ -62,7 +62,7 @@ export function resolveConfig(raw: Partial<ClearMindConfig> | Record<string, unk
 		reminderEnabled: typeof value.reminderEnabled === "boolean" ? value.reminderEnabled : true,
 		reminderThresholdRatio: ratio,
 		reminderThresholdTokens: nonNegative(value.reminderThresholdTokens, 0),
-		reminderThresholdSteps: positive(value.reminderThresholdSteps, 15),
-		reminderStepInterval: positive(value.reminderStepInterval, 5)
+		reminderThresholdSteps: positive(value.reminderThresholdSteps, 40),
+		reminderStepInterval: positive(value.reminderStepInterval, 10)
 	};
 }

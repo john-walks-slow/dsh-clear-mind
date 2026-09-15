@@ -149,7 +149,21 @@ export function SettingsPanel(props: SettingsPanelProps): React.ReactElement {
 	React.useEffect(() => scope.subscribe(() => setSnapshot(scope.getSnapshot())), [scope]);
 
 	if (snapshot.status === "loading") return <div className="dcm-loading">正在加载设置…</div>;
-	if (snapshot.status === "unavailable") return <div className="dcm-loading">设置不可用（内存模式或命名空间未注册）。</div>;
+	if (snapshot.status === "unavailable") {
+		// Two distinct causes share the unavailable status: the connection is a
+		// non-loopback page that the platform demotes to process-local (memory)
+		// mode — every settings namespace is read-only there, official ones
+		// included — or the clear-mind namespace was never registered (headless
+		// profile without a settings service). Surface the actionable one.
+		if (snapshot.mode === "memory") {
+			return (
+				<div className="dcm-loading">
+					设置暂不可用：当前通过非本机地址访问（页面地址不是 127.0.0.1 / localhost），平台将设置保持为进程本地（memory 模式），所有设置页在此访问方式下均为只读降级。请通过本机地址访问（例如 http://127.0.0.1:4175）后再编辑；当前展示的是插件默认值，不影响运行。
+				</div>
+			);
+		}
+		return <div className="dcm-loading">设置不可用：clear-mind 命名空间未注册（当前环境未组合 settings 服务，或插件注册失败）。</div>;
+	}
 
 	const value = snapshot.value ?? ({} as ClearMindSettings);
 	const writable = snapshot.writable;

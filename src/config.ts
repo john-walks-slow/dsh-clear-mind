@@ -16,7 +16,7 @@ export const Config = z.object({
 	maxNotesChars: z.number().step(1).min(1).default(16000),
 	selfCollapse: z.boolean().default(true),
 	reminderEnabled: z.boolean().default(true),
-	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.90),
+	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70),
 	reminderThresholdTokens: z.number().step(1).min(0).default(0),
 	reminderThresholdSteps: z.number().step(1).min(1).default(40),
 	reminderStepInterval: z.number().step(1).min(1).default(10)
@@ -47,7 +47,7 @@ export function resolveConfig(raw: Partial<ClearMindConfig> | Record<string, unk
 		return parsed;
 	};
 	const ratio = (() => {
-		const parsed = typeof value.reminderThresholdRatio === "number" ? value.reminderThresholdRatio : 0.90;
+		const parsed = typeof value.reminderThresholdRatio === "number" ? value.reminderThresholdRatio : 0.70;
 		if (!(parsed > 0 && parsed <= 1)) throw new Error("dsh-clear-mind config: reminderThresholdRatio must be in (0, 1]");
 		return parsed;
 	})();

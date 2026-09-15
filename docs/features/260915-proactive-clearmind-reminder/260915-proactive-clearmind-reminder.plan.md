@@ -16,7 +16,7 @@
 | 分组 | 配置项 Key | 类型 | 默认值 | 范围/约束 | 中文说明 |
 |---|---|---|---|---|---|
 | **主动提醒** | `reminderEnabled` | `boolean` | `true` | true/false | 主动提醒总开关 |
-| | `reminderThresholdRatio` | `number` | `0.90` | 0.01 ~ 1.0 | 上下文占模型窗口比例阈值（默认 90%） |
+| | `reminderThresholdRatio` | `number` | `0.70` | 0.01 ~ 1.0 | 上下文占模型窗口比例阈值（默认 70%） |
 | | `reminderThresholdTokens` | `number` | `0` | 整数 ≥ 0 | 上下文绝对 Token 阈值（0 表示不限，仅按比例） |
 | | `reminderThresholdSteps` | `number` | `40` | 整数 ≥ 1 | 单轮连续 Step 步数阈值 |
 | | `reminderStepInterval` | `number` | `10` | 整数 ≥ 1 | 同一轮提醒冷却间隔步数 |

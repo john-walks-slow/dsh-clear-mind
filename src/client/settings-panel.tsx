@@ -42,7 +42,7 @@ const FIELDS: { section: string; title: string; fields: FieldDef[] }[] = [
 		title: "主动提醒 (Proactive Reminder)",
 		fields: [
 			{ key: "reminderEnabled", label: "启用主动提醒", hint: "当上下文过长或单轮步数过多时，自动提醒模型清理思路。", type: "toggle" },
-			{ key: "reminderThresholdRatio", label: "上下文占比阈值", hint: "上下文占模型最大窗口的比例（0.01 ~ 1.0），如 0.90 = 90%。", type: "number", min: 0.01, max: 1 },
+			{ key: "reminderThresholdRatio", label: "上下文占比阈值", hint: "上下文占模型最大窗口的比例（0.01 ~ 1.0），如 0.70 = 70%。", type: "number", min: 0.01, max: 1 },
 			{ key: "reminderThresholdTokens", label: "上下文绝对 Token 阈值", hint: "绝对 Token 数阈值（0 表示仅按比例计算）。", type: "number", min: 0 },
 			{ key: "reminderThresholdSteps", label: "单轮最大 Step 步数", hint: "同一轮内连续执行的 Step 步数阈值（≥ 1）。", type: "number", min: 1 },
 			{ key: "reminderStepInterval", label: "提醒冷却步数", hint: "同一轮内两次提醒之间的最小步数间隔（≥ 1）。", type: "number", min: 1 }

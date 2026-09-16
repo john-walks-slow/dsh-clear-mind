@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { homedir } from "node:os";
 import { Session, deriveEventMessage } from "@deepseek-ai/dsh-session";
+import type { SessionHeader, SessionId } from "@deepseek-ai/dsh-session";
 import { ToolCallId, createAssistantMessage } from "@deepseek-ai/dsh-llm";
 import { scanSurface } from "../src/scan.js";
 import { renderSurvey } from "../src/render.js";
@@ -145,19 +147,30 @@ test("scanSurface previews stay single-line and bounded", () => {
 	assert.ok(preview.length <= 50, "preview bounded: " + preview.length);
 });
 
-test("assistant call previews carry locating argument hints", () => {
+test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
 	const session = Session.create("s1" as never);
 	appendTurn(session, 1, [
 		{ user: "rework the config loader" },
 		{
 			calls: [
+				// bash with a description shows the description, never the command
+				{ name: "bash", args: JSON.stringify({ command: "npm test --filter config\nextra", description: "Run the config test suite" }), result: "ok" },
 				{ name: "edit", args: JSON.stringify({ file_path: "src/config/loadSettings.ts" }), result: "updated" },
-				{ name: "bash", args: JSON.stringify({ command: "npm test --filter config\nextra" }), result: "ok" },
 				{ name: "grep", args: JSON.stringify({ pattern: "loadSettings", path: "src" }), result: "3 hits" }
 			]
 		},
 		{
 			calls: [
+				{ name: "web_search", args: JSON.stringify({ queries: ["fix vite build", "vite config"] }), result: "5 sources" },
+				// no description → the command, as the UI row falls back
+				{ name: "bash", args: JSON.stringify({ command: "npm test --filter config\nextra" }), result: "ok" }
+			]
+		},
+		{
+			calls: [
+				// unknown tool → first string argument value, like the UI's others variant
+				{ name: "mcp__degoog__search", args: JSON.stringify({ query: "vite plugin crash", page: 1 }), result: "hits" },
+				// malformed and empty arguments degrade to the bare tool name
 				{ name: "bash", args: "{broken json", result: "ok" },
 				{ name: "bash", result: "ok" }
 			]
@@ -165,12 +178,95 @@ test("assistant call previews carry locating argument hints", () => {
 	]);
 	const survey = scanSurface(session, replicaMeter());
 	const first = survey.nodes[1].preview;
-	assert.match(first, /edit src\/config\/loadSettings\.ts/);
-	assert.match(first, /bash \(npm test --filter config\)/);
-	assert.match(first, /grep src/);
+	assert.match(first, /bash · Run the config test suite/);
+	assert.ok(!first.includes("npm test"), "the command itself stays out of a described bash hint");
+	assert.match(first, /edit · src\/config\/loadSettings\.ts/);
+	assert.match(first, /grep · loadSettings/);
 	assert.ok(first.length <= 96 + 2, "call hint line bounded");
-	// malformed and empty arguments degrade to the bare tool name
 	const second = survey.nodes[5].preview;
-	assert.equal(second, "→ bash, bash");
-	assert.ok(!second.includes("undefined"), "no undefined leaks from broken args");
+	assert.match(second, /web_search · fix vite build, vite config/);
+	assert.match(second, /bash · npm test --filter config/);
+	const third = survey.nodes[8].preview;
+	assert.equal(third, "→ mcp__degoog__search · vite plugin crash, bash, bash");
+	assert.ok(!third.includes("undefined"), "no undefined leaks from broken args");
+});
+
+test("call hints relativize workspace paths and abbreviate home like the UI rows", () => {
+	const header: SessionHeader = {
+		version: 0,
+		id: "s1" as SessionId,
+		createdAt: Date.now(),
+		cwd: "/workspace/app",
+		isSeeded: false
+	};
+	const session = Session.create("s1" as never, undefined, header);
+	appendTurn(session, 1, [
+		{ user: "touch the config files" },
+		{
+			calls: [
+				// workspace-rooted absolute paths display relative, as the row does
+				{ name: "read", args: JSON.stringify({ path: "/workspace/app/src/config.ts" }), result: "ok" },
+				{ name: "edit", args: JSON.stringify({ file_path: "/workspace/app/test/helpers.ts" }), result: "ok" },
+				// outside the workspace but under the account home → ~ abbreviation
+				{ name: "read", args: JSON.stringify({ url: `${homedir()}/documents/notes.md` }), result: "ok" },
+				// outside both → left untouched
+				{ name: "read", args: JSON.stringify({ path: "/etc/hosts" }), result: "ok" }
+			]
+		}
+	]);
+	const survey = scanSurface(session, replicaMeter());
+	const preview = survey.nodes[1].preview;
+	assert.ok(preview.includes("read · src/config.ts"), "workspace path relativized: " + preview);
+	assert.ok(preview.includes("edit · test/helpers.ts"), "edit path relativized: " + preview);
+	assert.ok(preview.includes("read · ~/documents/notes.md"), "home path abbreviated: " + preview);
+	assert.ok(preview.includes("read · /etc/hosts"), "foreign path untouched: " + preview);
+});
+
+test("call hint lines truncate at the line cap with an ellipsis", () => {
+	const session = Session.create("s1" as never);
+	appendTurn(session, 1, [
+		{ user: "search broadly" },
+		{
+			calls: [
+				{
+					name: "web_search",
+					args: JSON.stringify({
+						queries: [
+							"why does the vite build fail on arm64 when the sqlite native module",
+							"is missing its prebuilt binding and falls back to node-gyp compile"
+						]
+					}),
+					result: "ok"
+				},
+				{
+					name: "grep",
+					args: JSON.stringify({ pattern: "estimateBlocks|appendToolResult|assertShadowPriceProtocol|heuristicBySeq", path: "src" }),
+					result: "ok"
+				}
+			]
+		}
+	]);
+	const survey = scanSurface(session, replicaMeter());
+	const preview = survey.nodes[1].preview;
+	// two capped segments (name · 48) join past CALL_HINT_MAX → "→ " + 95 + "…"
+	assert.equal(preview.length, 98, "capped at the arrow plus 96: " + preview);
+	assert.ok(preview.endsWith("…"));
+	assert.ok(preview.startsWith("→ web_search · why does the vite build fail"));
+});
+
+test("pwsh maps to the bash variant and empty queries fall back to the query key", () => {
+	const session = Session.create("s1" as never);
+	appendTurn(session, 1, [
+		{ user: "edge cases" },
+		{
+			calls: [
+				{ name: "pwsh", args: JSON.stringify({ command: "Get-ChildItem", description: "List the build outputs" }), result: "ok" },
+				{ name: "web_search", args: JSON.stringify({ queries: [], query: "single fallback query" }), result: "ok" }
+			]
+		}
+	]);
+	const survey = scanSurface(session, replicaMeter());
+	const preview = survey.nodes[1].preview;
+	assert.ok(preview.includes("pwsh · List the build outputs"), "pwsh follows the bash summary keys: " + preview);
+	assert.ok(preview.includes("web_search · single fallback query"), "empty queries fall back to query: " + preview);
 });

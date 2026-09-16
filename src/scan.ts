@@ -8,6 +8,7 @@
  * mutates the session.
  */
 
+import { homedir } from "node:os";
 import {
 	Session,
 	SessionSeq,
@@ -73,10 +74,8 @@ export interface Survey {
 }
 
 const PREVIEW_MAX = 48;
-/** Tool-call hint lines carry the locating argument, so they get more room. */
+/** Tool-call hint lines carry the UI row summary, so they get more room. */
 const CALL_HINT_MAX = 96;
-/** Argument keys whose value is the natural locator for a call. */
-const HINT_KEYS = ["file_path", "path", "pattern"];
 
 /** Collapse whitespace and cap to the preview budget. */
 function toPreviewLine(text: string): string {
@@ -85,19 +84,121 @@ function toPreviewLine(text: string): string {
 	return collapsed.length <= PREVIEW_MAX ? collapsed : collapsed.slice(0, PREVIEW_MAX - 1) + "…";
 }
 
-/** First meaningful segment of a shell command, for preview purposes. */
-function firstCommandSegment(command: string): string {
-	const cut = command.split(/[\n;|&]/)[0] ?? "";
-	return cut.trim();
+// The hint below mirrors how the web client derives an UNEXPANDED tool row's
+// summary from the call arguments, so a map line and the row the user is
+// looking at stay comparable. Value derivation mirrors toolRowModel's
+// deriveSummary (bash shows its description rather than the command, read/edit
+// the path, grep the pattern, web_search the joined queries); the derived
+// summary then passes through the same relativizeToCwd + abbreviateHomePath
+// pair the UI applies uniformly to every variant, so file paths show
+// workspace-relative or `~`-abbreviated exactly like the row. Known, accepted
+// divergences:
+//  - BashRow renders its raw description without the path transforms (and an
+//    error row renders the failure line instead); the map applies the
+//    transforms uniformly and always shows the call-side summary — errors stay
+//    on the tool-result node's "name !" prefix.
+//  - Malformed or empty arguments degrade to the bare tool name (UI: raw JSON
+//    head or callId), and previews keep the map's hard per-segment/line caps.
+// Mirror source: dsh-client-ui-tool's client.js (toolRowModel, deriveSummary,
+// relativizeToCwd, abbreviateHomePath) in the dsh checkout at
+// /usr/lib/node_modules/@deepseek-ai/dsh — when dsh is upgraded, re-diff the
+// tables and helpers below against that file.
+
+type ToolVariant = "bash" | "read" | "search" | "write" | "edit" | "code" | "others";
+
+/**
+ * Session display context for the row-summary path transforms: the session's
+ * workspace root (relativize paths under it) and the host account home
+ * (abbreviate leftover POSIX home paths to `~`).
+ */
+interface RowDisplayContext {
+	readonly cwd?: string;
+	readonly home?: string;
+}
+
+/** Mirror of the web client's isWindowsStylePath. */
+function isWindowsStylePath(value: string): boolean {
+	return /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("\\\\");
+}
+
+/** Mirror of the web client's relativizeToCwd: strip the workspace-root prefix. */
+function relativizeToCwd(text: string, cwd: string | undefined): string {
+	if (cwd === undefined || cwd === "") return text;
+	const root = cwd.replace(/[/\\]+$/, "");
+	if (text.startsWith(root + "/") || text.startsWith(root + "\\")) return text.slice(root.length + 1);
+	return text;
+}
+
+/** Mirror of the web client's abbreviateHomePath: collapse the home prefix to `~`. */
+function abbreviateHomePath(path: string, home: string | undefined): string {
+	if (home === undefined || home === "") return path;
+	if (isWindowsStylePath(path) || isWindowsStylePath(home)) return path;
+	const root = home.replace(/\/+$/, "");
+	if (root === "" || root === "/") return path;
+	if (path.replace(/\/+$/, "") === root) return "~";
+	if (path.startsWith(root + "/")) return "~" + path.slice(root.length);
+	return path;
+}
+
+/** Tool name → row variant (mirror of the web client's TOOL_VARIANTS). */
+const TOOL_VARIANTS: Readonly<Record<string, ToolVariant>> = {
+	bash: "bash",
+	pwsh: "bash",
+	read: "read",
+	web_fetch: "read",
+	cordis_package_inspect: "read",
+	cordis_runtime_inspect: "read",
+	web_search: "search",
+	grep: "search",
+	glob: "search",
+	write: "write",
+	edit: "edit",
+	run_code: "code",
+	cordis_run: "others",
+	cordis_stop: "others",
+	cordis_undefine: "others"
+};
+
+/** Summary key preference per variant (mirror of the web client's SUMMARY_KEYS). */
+const SUMMARY_KEYS: Readonly<Record<ToolVariant, readonly string[]>> = {
+	bash: ["description", "command"],
+	read: ["path", "file_path", "url"],
+	search: ["query", "pattern", "url"],
+	write: ["path", "file_path"],
+	edit: ["path", "file_path"],
+	code: ["description"],
+	others: []
+};
+
+/** First line only — a UI row summary never crosses a newline. */
+function firstLine(text: string): string {
+	const newline = text.indexOf("\n");
+	return newline === -1 ? text : text.slice(0, newline);
+}
+
+/** The unexpanded-row summary the web client derives from one call's arguments. */
+function rowSummary(variant: ToolVariant, args: Record<string, unknown>): string | undefined {
+	if (variant === "search" && Array.isArray(args.queries)) {
+		const queries = args.queries.filter((query): query is string => typeof query === "string" && query !== "");
+		if (queries.length > 0) return queries.map(firstLine).join(", ");
+	}
+	for (const key of SUMMARY_KEYS[variant]) {
+		const value = args[key];
+		if (typeof value === "string" && value !== "") return firstLine(value);
+	}
+	for (const value of Object.values(args)) {
+		if (typeof value === "string" && value !== "") return firstLine(value);
+	}
+	return undefined;
 }
 
 /**
- * One tool call as a map hint: name plus its locating argument when the raw
- * JSON carries one (edit/read → file path, grep → pattern, bash → first
- * command segment). Malformed or truncated arguments degrade to the bare
- * name — the map must never fail over a preview.
+ * One tool call as a map hint: name plus the same unexpanded-row summary the
+ * user sees in the web UI, with the UI's path transforms (workspace
+ * relativization + `~` abbreviation) applied. Malformed or empty arguments
+ * degrade to the bare name — the map must never fail over a preview.
  */
-function callHint(call: Extract<ContentBlock, { type: "tool-call" }>): string {
+function callHint(call: Extract<ContentBlock, { type: "tool-call" }>, display: RowDisplayContext): string {
 	let parsed: Record<string, unknown> | null = null;
 	if (typeof call.arguments === "string" && call.arguments.length > 0) {
 		try {
@@ -108,14 +209,10 @@ function callHint(call: Extract<ContentBlock, { type: "tool-call" }>): string {
 		}
 	}
 	if (parsed !== null) {
-		for (const key of HINT_KEYS) {
-			const value = parsed[key];
-			if (typeof value === "string" && value.trim().length > 0) return call.name + " " + toPreviewLine(value);
-		}
-		const command = parsed.command ?? parsed.cmd;
-		if (typeof command === "string") {
-			const segment = firstCommandSegment(command);
-			if (segment.length > 0) return call.name + " (" + toPreviewLine(segment) + ")";
+		const raw = rowSummary(TOOL_VARIANTS[call.name] ?? "others", parsed);
+		if (raw !== undefined) {
+			const summary = toPreviewLine(abbreviateHomePath(relativizeToCwd(raw, display.cwd), display.home));
+			if (summary !== "") return call.name + " · " + summary;
 		}
 	}
 	return call.name;
@@ -130,7 +227,7 @@ function textOfBlocks(blocks: readonly ContentBlock[]): string {
 }
 
 /** Build the one-line preview for a derived message. */
-function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, string>): { preview: string; kind: "user" | "assistant" | "tool"; toolName?: string; isError?: boolean } {
+function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, string>, display: RowDisplayContext): { preview: string; kind: "user" | "assistant" | "tool"; toolName?: string; isError?: boolean } {
 	if (message.role === "user" && message.content.length > 0 && message.content[0].type === "tool-result") {
 		const result = message.content[0];
 		const preview = toPreviewLine(textOfBlocks(result.content));
@@ -141,7 +238,7 @@ function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, strin
 	if (message.role === "assistant") {
 		const calls = message.content.filter((block): block is Extract<ContentBlock, { type: "tool-call" }> => block.type === "tool-call");
 		if (calls.length > 0) {
-			const joined = calls.map(callHint).join(", ");
+			const joined = calls.map((call) => callHint(call, display)).join(", ");
 			return { preview: joined.length <= CALL_HINT_MAX ? "→ " + joined : "→ " + joined.slice(0, CALL_HINT_MAX - 1) + "…", kind: "assistant" };
 		}
 		return { preview: toPreviewLine(textOfBlocks(message.content)), kind: "assistant" };
@@ -180,6 +277,9 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		if (isSurfaceEvent(event)) turnsBySeq.set(event.seq, currentTurn);
 	}
 	const measurement: TokenMeasurement = meter.measure(session);
+	// Row-display context mirrors what the web client passes its tool rows:
+	// the session's workspace root and the host account home.
+	const display: RowDisplayContext = { cwd: session.header.cwd, home: homedir() };
 	const heuristicBySeq = new Map<number, number>();
 	for (const node of measurement.nodes) heuristicBySeq.set(node.seq, node.heuristicTokens);
 	const nodes: SurveyNode[] = [];
@@ -189,7 +289,7 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		if (event === undefined || !isSurfaceEvent(event)) continue;
 		const message = deriveEventMessage(event);
 		const tokens = message === null ? 0 : (heuristicBySeq.get(seq) ?? meter.estimateMessage(message));
-		const shape = message === null ? { preview: "(empty)", kind: "assistant" as const } : previewOfMessage(message, toolNames);
+		const shape = message === null ? { preview: "(empty)", kind: "assistant" as const } : previewOfMessage(message, toolNames, display);
 		nodes.push({
 			seq,
 			turn: turnsBySeq.get(seq) ?? null,

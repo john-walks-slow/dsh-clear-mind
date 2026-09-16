@@ -8,11 +8,12 @@
  *     itself distills, through the platform's native compaction transaction
  *     (start / summary / replace / end) so the GUI, token meter, and future
  *     auto-compactions all understand it.
- * Plus the clear-mind runtime skill teaching WHEN and HOW to clear, a
- * step-boundary self-collapse that folds each clear_mind call+result into a
- * one-line tombstone once the checkpoint has landed, and a proactive reminder
- * that nudges the model when the context grows long or a turn runs too many
- * steps.
+ * Plus a step-boundary self-collapse that folds each clear_mind call+result
+ * into a one-line tombstone once the checkpoint has landed, and a proactive
+ * reminder that nudges the model when the context grows long or a turn runs
+ * too many steps. The clear-mind playbook (when to clear, how to pick a
+ * range and write the notes) is folded into the mind_map tool description
+ * and result so no separate skill needs to be read first.
  *
  * Human-side history is never touched: the append-only log is the source of
  * truth and the GUI transcript renders append-origin events, so every clear
@@ -22,20 +23,16 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
-// Type-only: pulls the ctx.skills Context augmentation into the compile without
-// emitting a runtime import (dsh-skill stays a devDependency).
-import type {} from "@deepseek-ai/dsh-skill";
 import { Config, resolveConfig } from "./config.js";
 import type { ClearMindConfig } from "./config.js";
 import type { MeterPort } from "./scan.js";
 import { mindMapTool, clearMindTool } from "./tools.js";
-import { CLEAR_MIND_SKILL } from "./skill.js";
 import { collapseClearMindRuns } from "./collapse.js";
 import { evaluateReminder, buildReminderMessage } from "./reminder.js";
 import type { AgentReminderState, ModelInfoPort } from "./reminder.js";
 
 export const name = "dsh-clear-mind";
-export const inject = ["tools", "tokenMeter", "skills", "agents", "llm"];
+export const inject = ["tools", "tokenMeter", "agents", "llm"];
 export { Config };
 
 export function apply(ctx: Context, config: Record<string, unknown> = {}) {
@@ -73,15 +70,6 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 	for (const existing of ctx.agents.roots()) {
 		registerOne(existing);
 	}
-
-	// The clear-mind skill: catalog-level teaching for when and how to clear.
-	ctx.skills.register({
-		name: CLEAR_MIND_SKILL.name,
-		description: CLEAR_MIND_SKILL.description,
-		whenToUse: CLEAR_MIND_SKILL.whenToUse,
-		content: CLEAR_MIND_SKILL.content,
-		source: "runtime"
-	});
 
 	// Optional settings namespace registration: lets the Web UI read and
 	// hot-edit every config knob without a restart. Degrades to a logged
@@ -146,5 +134,5 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		return decision;
 	});
 
-	ctx.logger.info("dsh-clear-mind: registered mind_map + clear_mind for root agents; skill clear-mind available");
+	ctx.logger.info("dsh-clear-mind: registered mind_map + clear_mind for root agents; clear-mind playbook folded into mind_map");
 }

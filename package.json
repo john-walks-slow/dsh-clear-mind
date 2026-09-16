@@ -1,7 +1,7 @@
 {
   "name": "dsh-clear-mind",
   "version": "0.1.0",
-  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface, clear_mind replaces a chosen span with a model-written checkpoint, the clear-mind skill teaches when and how to clear one's mind, and a proactive reminder nudges the model when the context grows long.",
+  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface (its description carries when-to-clear signals, its result the how-to-clear playbook), clear_mind replaces a chosen span with a model-written checkpoint, and a proactive reminder nudges the model when the context grows long.",
   "type": "module",
   "main": "./dist/src/index.js",
   "exports": {

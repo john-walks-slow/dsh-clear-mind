@@ -34,7 +34,7 @@ export function mindMapTool(meter: MeterPort) {
 	return defineTool({
 		name: "mind_map",
 		description:
-			"Survey your own context surface: every model-visible message with its stable seq id, role, token weight, and a one-line preview, grouped by turn. Valid clear_mind range boundaries are marked. Call this first when planning a clear_mind — pick start/end seqs from this map. This call and its result self-erase at the next step boundary once consumed; the human-side history stays untouched. Takes no arguments.",
+			"Survey your own context surface: every model-visible message with its stable seq id, role, token weight, and a one-line preview, grouped by turn. Valid clear_mind range boundaries are marked (▸ start, ◂ end, ◆ prior checkpoint). Call this first when planning a clear_mind — its result carries the clear-mind playbook (range choice, notes template, self-check). 该梳理的信号（满足其一）：① 同一问题已试 ≥2 次失败方案即将换方向；② 一段探索/调研结束且结论明确；③ 用户改了方向、旧工作可归档；④ 发现自己在往回翻旧消息重新定位自己；⑤ 子任务完成、切换下一个；⑥ token 压力上升但未到自动压缩阈值——主动清优于被动等（自动压缩只保最近尾巴，你保语义边界）。不宜在上下文还短、工具链中间马上要用刚产生的结果、或区间内还有未外化的关键信息时清。This call and its result self-erase at the next step boundary once consumed; the human-side history stays untouched. Takes no arguments.",
 		parameters: {},
 		output: {
 			schema: {
@@ -96,7 +96,7 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 	return defineTool({
 		name: "clear_mind",
 		description:
-			"Clear your mind: replace a range of your own conversation history with a distilled checkpoint you write, freeing context and attention. First call mind_map to get seq ids. Args: start (integer seq e.g. 123 or 'first'), end (integer seq e.g. 456 or 'latest' = everything before the current step), notes (the checkpoint: user intent verbatim, key facts/paths/ids, abandoned paths and why, open threads, next action — absorb any prior checkpoints inside the range). Keep recent in-flight turns verbatim; clear completed or abandoned phases. This call and its result self-erase at the next step boundary; the human-side history stays untouched. Read the clear-mind skill for the full workflow.",
+			"Clear your mind: replace a range of your own conversation history with a distilled checkpoint you write, freeing context and attention. First call mind_map to get seq ids — its result carries the clear-mind playbook (range choice, notes template, self-check). Args: start (integer seq e.g. 123 or 'first'), end (integer seq e.g. 456 or 'latest' = everything before the current step), notes (the checkpoint: user intent verbatim, key facts/paths/ids, abandoned paths and why, open threads, next action — absorb any prior checkpoints inside the range). Keep recent in-flight turns verbatim; clear completed or abandoned phases. This call and its result self-erase at the next step boundary; the human-side history stays untouched.",
 		parameters: {
 			start: {
 				oneOf: [{ type: "integer" }, { type: "string" }],
@@ -110,7 +110,7 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 			},
 			notes: {
 				type: "string", required: true,
-				description: "The checkpoint notes future-you needs (see the clear-mind skill template)."
+				description: "The checkpoint notes future-you needs (template + self-check are in the mind_map result)."
 			}
 		},
 		output: {

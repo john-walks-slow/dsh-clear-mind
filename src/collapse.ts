@@ -14,7 +14,7 @@
  * For mind_map, collapse is deferred until subsequent events appear on the surface
  * so the model can read the survey in the immediately following step.
  * Mixed batches (clear_mind/mind_map alongside other tools) are skipped: the sibling
- * results may never have been seen yet, and the skill teaches solo calls.
+ * results may never have been seen yet, and the mind_map playbook teaches solo calls.
  */
 
 import { Session, SessionSeq, deriveEventMessage } from "@deepseek-ai/dsh-session";

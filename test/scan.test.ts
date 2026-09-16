@@ -112,6 +112,25 @@ test("renderSurvey shows markers, seqs, and the non-monotonic note", () => {
 	assert.match(text, /turn 1/);
 	assert.match(text, /bash: ok/);
 	assert.match(text, /Latest clearable end/);
+	assert.match(text, /clear-mind playbook/);
+	assert.match(text, /已放弃的路径/);
+	assert.match(text, /clear_mind 单独一条消息/);
+});
+
+test("renderSurvey omits the playbook when nothing is clearable yet", () => {
+	const session = Session.create("s1" as never);
+	session.append("turn/start", { turn: 1 });
+	// an open, unanswered tool-call: its validEnd is false and it is the only node
+	const assistant = createAssistantMessage({
+		content: [{ type: "tool-call", id: ToolCallId("call-open"), name: "bash", arguments: "{}" }],
+		source: { provider: "p", model: "m" }
+	});
+	session.append("assistant/message", { turn: 1, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+	const survey = scanSurface(session, replicaMeter());
+	assert.equal(survey.latestEndSeq, undefined, "no valid end before the current step");
+	const text = renderSurvey(survey);
+	assert.ok(!text.includes("clear-mind playbook"), "playbook gated out when nothing is clearable");
+	assert.match(text, /nothing to clear/);
 });
 
 test("renderSurvey aggregates old turns beyond the detail limit", () => {

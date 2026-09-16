@@ -2,18 +2,17 @@
 
 ## 职责
 
-给 root agent 注册 mind_map / clear_mind 两个工具 + clear-mind 技能：模型可自主把一段会话历史替换成检查点（「清空脑子」），调用对随后自动折叠。
+给 root agent 注册 mind_map / clear_mind 两个工具：模型可自主把一段会话历史替换成检查点（「清空脑子」），调用对随后自动折叠。clear-mind 最佳实践（何时清理、怎么选区间、怎么写 notes）已折叠进 mind_map 的 description + 返回，不再单独注册技能——模型调一次 mind_map 即得地图+操作手册，省一轮 skill 读取。
 
 ## 地图
 
-- `src/config.ts` — schemastery Config + resolveConfig（minClearTokens/minNotesChars/maxNotesChars/selfCollapse）
+- `src/config.ts` — schemastery Config + resolveConfig（minClearTokens/minNotesChars/maxNotesChars/selfCollapse/reminder*）
 - `src/scan.ts` — scanSurface：事件日志 → Survey（节点/边界标记/turn 归属/latestEndSeq）；MeterPort 端口类型
-- `src/render.ts` — renderSurvey：模型面对的地图文本；RENDER_NODE_LIMIT=140 超限按 turn 聚合
+- `src/render.ts` — renderSurvey：模型面对的地图文本；RENDER_NODE_LIMIT=140 超限按 turn 聚合；可清理时末尾附 clear-mind playbook（区间选择/notes 模板/提交前自检，字符串内引号用「」避免转义）
 - `src/commit.ts` — commitClearMind 全事务 + frameCheckpointMessage（<compacted-summary> + compactCheckpointSource）
 - `src/collapse.ts` — planCollapses 无状态检测 + applyCollapse（prune + user/message notice tombstone）
-- `src/tools.ts` — defineTool 两工具；presentationMeta 携带 collapse 统计；route 解析（session.requestHeader → agent.options）
-- `src/skill.ts` — 技能内容（中文；字符串内引号用「」避免转义问题）
-- `src/index.ts` — cordis apply：inject/MeterPort/roots+agent/created 注册/技能注册/agent-pre-step 自折叠
+- `src/tools.ts` — defineTool 两工具；mind_map description 含「何时清理」信号、返回带 playbook；presentationMeta 携带 collapse 统计；route 解析（session.requestHeader → agent.options）
+- `src/index.ts` — cordis apply：inject/MeterPort/roots+agent/created 注册/agent-pre-step 自折叠（无技能注册）
 - `test/` — 真实 Session 脚本化构造器 + assertShadowPriceProtocol 全日志断言
 
 ## 开发

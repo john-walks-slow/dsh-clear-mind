@@ -50,6 +50,11 @@ function freshSignal(): AbortSignal {
 	return new AbortController().signal;
 }
 
+test("resolveConfig defaults: the step threshold is 60 steps", () => {
+	const config = resolveConfig();
+	assert.equal(config.reminderThresholdSteps, 60);
+});
+
 test("evaluateReminder fires when the step count crosses the threshold", async () => {
 	const config = resolveConfig({ reminderThresholdSteps: 15 });
 	const agent = fakeAgent({ provider: "p", model: "m" });

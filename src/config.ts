@@ -18,7 +18,7 @@ export const Config = z.object({
 	reminderEnabled: z.boolean().default(true),
 	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70),
 	reminderThresholdTokens: z.number().step(1).min(0).default(0),
-	reminderThresholdSteps: z.number().step(1).min(1).default(40),
+	reminderThresholdSteps: z.number().step(1).min(1).default(60),
 	reminderStepInterval: z.number().step(1).min(1).default(10)
 });
 
@@ -62,7 +62,7 @@ export function resolveConfig(raw: Partial<ClearMindConfig> | Record<string, unk
 		reminderEnabled: typeof value.reminderEnabled === "boolean" ? value.reminderEnabled : true,
 		reminderThresholdRatio: ratio,
 		reminderThresholdTokens: nonNegative(value.reminderThresholdTokens, 0),
-		reminderThresholdSteps: positive(value.reminderThresholdSteps, 40),
+		reminderThresholdSteps: positive(value.reminderThresholdSteps, 60),
 		reminderStepInterval: positive(value.reminderStepInterval, 10)
 	};
 }

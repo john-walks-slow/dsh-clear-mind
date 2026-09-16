@@ -32,7 +32,7 @@ import type { ClearMindConfig } from "./config.js";
 import type { MeterPort } from "./scan.js";
 
 /** Range endpoints as the model expresses them: a surface seq or a sentinel. */
-export type RangeEndpoint = number | "first" | "latest";
+export type RangeEndpoint = number | string;
 
 /** Successful commit report (value shape of the clear_mind tool). */
 export interface ClearCommit {
@@ -59,7 +59,14 @@ const CHECKPOINT_PREAMBLE =
 	"Continue directly from the messages that follow.";
 
 /** Resolve a range endpoint against the current surface. */
-function resolveEndpoint(endpoint: RangeEndpoint, side: "start" | "end", surface: readonly number[], latestEndSeq: number | undefined): number {
+function resolveEndpoint(rawEndpoint: RangeEndpoint, side: "start" | "end", surface: readonly number[], latestEndSeq: number | undefined): number {
+	let endpoint = rawEndpoint;
+	if (typeof endpoint === "string") {
+		const clean = endpoint.trim().replace(/^["']|["']$/g, "").toLowerCase();
+		if (clean === "first") endpoint = "first";
+		else if (clean === "latest") endpoint = "latest";
+		else if (/^\d+$/.test(clean)) endpoint = parseInt(clean, 10);
+	}
 	if (endpoint === "first") {
 		if (surface.length === 0) throw new Error("clear_mind: the surface is empty — nothing to clear.");
 		return surface[0];
@@ -68,7 +75,7 @@ function resolveEndpoint(endpoint: RangeEndpoint, side: "start" | "end", surface
 		if (latestEndSeq === undefined) throw new Error("clear_mind: no clearable boundary before the current step — nothing to clear yet.");
 		return latestEndSeq;
 	}
-	if (!Number.isInteger(endpoint) || endpoint < 0) throw new Error("clear_mind: " + side + " must be a surface seq (see mind_map), 'first', or 'latest'.");
+	if (typeof endpoint !== "number" || !Number.isInteger(endpoint) || endpoint < 0) throw new Error("clear_mind: " + side + " must be a surface seq (see mind_map), 'first', or 'latest'.");
 	if (!surface.includes(endpoint)) throw new Error("clear_mind: seq " + endpoint + " is not on the current surface. Call mind_map for the current seq map.");
 	return endpoint;
 }

@@ -246,3 +246,15 @@ test("S4: a failing append closes the bracket with exactly one compaction/end ca
 	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
 	assert.equal(protocol.replaces, 1);
 });
+
+test("commitClearMind accepts string seq numbers, trimmed strings, and uppercase sentinels", () => {
+	const session = fixture();
+	const meter = replicaMeter();
+	const surfaceBefore = [...session.surface.nodes];
+	const endSeq = surfaceBefore[surfaceBefore.length - 1];
+	// pass string numbers "0" or " 0 " as start, and "LATEST" as end
+	const report = commitClearMind({ session, meter, config, route }, String(surfaceBefore[0]) as any, "LATEST" as any,
+		"## Mission\n- make the build green\n## Notes\ntesting tolerant endpoints");
+	assert.equal(report.kind, "cleared");
+	assert.equal(report.clearedNodes, surfaceBefore.length);
+});

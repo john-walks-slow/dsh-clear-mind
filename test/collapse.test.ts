@@ -120,3 +120,67 @@ test("an older uncollapsed pair (mid-surface) still collapses later", () => {
 test("collapseToolName exposes the recognized tool", () => {
 	assert.equal(collapseToolName(), "clear_mind");
 });
+
+test("planCollapses leaves trailing mind_map uncollapsed so the model can inspect the survey", () => {
+	const session = Session.create("s-mm1" as never);
+	appendTurn(session, 1, [{ user: "explore " + LOREM.repeat(10) }]);
+	session.append("turn/start", { turn: 2 });
+	const meter = replicaMeter();
+	const assistant = appendOpenAssistant(session, 2, [{ name: "mind_map" }]);
+	appendToolResult(session, 2, 2, assistant, 0, "survey preview text " + LOREM.repeat(5));
+	// mind_map is at the trailing edge of the surface (no subsequent events yet)
+	const plans = planCollapses(session, meter);
+	assert.equal(plans.length, 0, "trailing mind_map is not collapsed immediately");
+});
+
+test("planCollapses and applyCollapse fold a consumed mind_map once subsequent steps appear", () => {
+	const session = Session.create("s-mm2" as never);
+	appendTurn(session, 1, [
+		{ user: "explore " + LOREM.repeat(20) },
+		{ calls: [{ name: "bash", result: LOREM.repeat(50) }] }
+	]);
+	const turn1EndSeq = session.surface.nodes[session.surface.nodes.length - 1];
+	session.append("turn/start", { turn: 2 });
+	const meter = replicaMeter();
+	// Step 1: assistant calls mind_map
+	const mmAssistant = appendOpenAssistant(session, 2, [{ name: "mind_map" }]);
+	appendToolResult(session, 2, 2, mmAssistant, 0, "huge survey: " + LOREM.repeat(100));
+
+	// Step 2: assistant calls clear_mind targeting only turn 1 (mind_map remains on surface outside cleared span)
+	const cmAssistant = appendOpenAssistant(session, 2, [{ name: "clear_mind" }]);
+	const report = commitClearMind(
+		{ session, meter, config, route },
+		"first", turn1EndSeq,
+		"## Mission\n- continue"
+	);
+	appendToolResult(session, 2, 2, cmAssistant, 0, "Cleared " + report.clearedNodes + " messages.", {
+		meta: { clearedNodes: report.clearedNodes, clearedTokens: report.clearedTokens, checkpointSeq: report.checkpointSeq }
+	});
+
+	// Now mind_map is still on the surface, followed by clear_mind; both should be scheduled for collapse.
+	const plans = planCollapses(session, meter);
+	assert.equal(plans.length, 2, "both mind_map and clear_mind are scheduled for collapse");
+	assert.equal(plans[0].toolName, "mind_map");
+	assert.equal(plans[1].toolName, "clear_mind");
+
+	const tombstoneSeqs = collapseClearMindRuns(session, meter);
+	assert.equal(tombstoneSeqs.length, 2);
+
+	const after = session.surface.nodes as readonly number[];
+	// Verify mind_map call & result are pruned from surface
+	const mmEvent = session.eventAt(SessionSeq(tombstoneSeqs[0]));
+	assert.ok(mmEvent !== undefined && mmEvent.type === "user/message");
+	const mmMsg = deriveEventMessage(mmEvent);
+	assert.match((mmMsg?.content[0] as { text: string }).text, /mind_map survey completed; this call and its result were folded away/);
+
+	// Pairing stays balanced across the whole surface
+	for (const seq of after) {
+		assert.equal(toolPairingBalancedBefore(session, SessionSeq(seq)), true, "balancedBefore at " + seq);
+		assert.equal(toolPairingBalancedAfter(session, SessionSeq(seq)), true, "balancedAfter at " + seq);
+	}
+
+	// Shadow price protocol is fully honored
+	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
+	assert.equal(protocol.replaces, 3, "commit + 2 collapses");
+	assert.equal(planCollapses(session, meter).length, 0, "idempotent");
+});

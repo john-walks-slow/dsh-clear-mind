@@ -1,18 +1,20 @@
 /**
- * Self-collapse: after a successful clear_mind, the assistant message carrying
- * the call (with the full notes duplicated in its arguments) and the tool
- * result stay on the surface as dead weight. At the next step boundary the
- * pair is replaced with a one-line visible tombstone — a plugin-authored
+ * Self-collapse: after a successful clear_mind (or after a mind_map survey has
+ * been consumed by subsequent steps), the assistant message carrying the call
+ * and its tool results stay on the surface as dead weight. At the next step
+ * boundary the pair is replaced with a one-line visible tombstone — a plugin-authored
  * user-role notice, the same replacement shape the compaction engine itself
- * uses — so the model sees that the clear happened (and where the checkpoint
- * lives) while the multi-kilobyte call+result echo disappears. Pairing stays
- * balanced and the change is observable, never silent.
+ * uses — so the multi-kilobyte survey / call+result echo disappears while
+ * keeping the conversation clean and paired. Pairing stays balanced and the
+ * change is observable, never silent.
  *
  * Detection is stateless: every agent/pre-step scans the surface for
- * assistant/message events whose tool-calls are ALL clear_mind and whose
- * matching tool/result events follow contiguously, all successful. Mixed
- * batches (clear_mind alongside other tools) are skipped: the sibling results
- * may never have been seen yet, and the skill teaches solo clear_mind calls.
+ * assistant/message events whose tool-calls are ALL clear_mind (or ALL mind_map)
+ * and whose matching tool/result events follow contiguously, all successful.
+ * For mind_map, collapse is deferred until subsequent events appear on the surface
+ * so the model can read the survey in the immediately following step.
+ * Mixed batches (clear_mind/mind_map alongside other tools) are skipped: the sibling
+ * results may never have been seen yet, and the skill teaches solo calls.
  */
 
 import { Session, SessionSeq, deriveEventMessage } from "@deepseek-ai/dsh-session";
@@ -20,19 +22,22 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { ContentBlock, Message } from "@deepseek-ai/dsh-llm";
 import type { MeterPort } from "./scan.js";
 
-/** One clear_mind call+results run scheduled to collapse. */
+/** One clear_mind or mind_map call+results run scheduled to collapse. */
 export interface CollapsePlan {
-	/** Surface seq of the assistant/message carrying the clear_mind calls. */
+	/** Which tool was called. */
+	readonly toolName: "clear_mind" | "mind_map";
+	/** Surface seq of the assistant/message carrying the clear_mind/mind_map calls. */
 	readonly assistantSeq: number;
 	/** Surface seqs of the matching tool/result events, in surface order. */
 	readonly resultSeqs: readonly number[];
-	/** Commit stats read from the tool/result meta (when present). */
+	/** Commit stats read from the tool/result meta (when present, clear_mind only). */
 	readonly stats?: { readonly clearedNodes: number; readonly clearedTokens: number; readonly checkpointSeq: number };
 	/** Fixed-heuristic price of the shadowed nodes (shadow-price protocol). */
 	readonly shadowedTokenCount: number;
 }
 
 const CLEAR_MIND_TOOL = "clear_mind";
+const MIND_MAP_TOOL = "mind_map";
 const CLEAR_MIND_PLUGIN = "dsh-clear-mind";
 
 interface ToolCallShape { type: string; id: string; name: string }
@@ -63,7 +68,7 @@ function statsOfMeta(meta: unknown): CollapsePlan["stats"] {
 }
 
 /**
- * Scan the surface for collapsible clear_mind runs.
+ * Scan the surface for collapsible clear_mind or consumed mind_map runs.
  * @param session - live session.
  * @param meter - token meter port for shadow pricing.
  * @returns collapse plans; empty when nothing qualifies.
@@ -77,7 +82,15 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 		if (event === undefined || event.type !== "assistant/message") continue;
 		const data = event.data as { turn: number; step: number; message: Message; meta?: unknown };
 		const calls = toolCallsOf(data.message);
-		if (calls.length === 0 || calls.some((call) => call.name !== CLEAR_MIND_TOOL)) continue;
+		if (calls.length === 0) continue;
+		let toolName: "clear_mind" | "mind_map" | undefined;
+		if (calls.every((call) => call.name === CLEAR_MIND_TOOL)) {
+			toolName = "clear_mind";
+		} else if (calls.every((call) => call.name === MIND_MAP_TOOL)) {
+			toolName = "mind_map";
+		} else {
+			continue;
+		}
 		const pending = new Set(calls.map((call) => call.id));
 		let stats: CollapsePlan["stats"];
 		const resultSeqs: number[] = [];
@@ -96,6 +109,10 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 			cursor += 1;
 		}
 		if (resultSeqs.length !== calls.length) continue;
+		// For mind_map: do not collapse if it is at the trailing edge of the surface.
+		// The model must be given the chance to inspect the survey in the immediately following step.
+		if (toolName === "mind_map" && cursor >= surface.length) continue;
+
 		const shadowed = [seq, ...resultSeqs];
 		let shadowedTokenCount = 0;
 		for (const shadowedSeq of shadowed) {
@@ -104,6 +121,7 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 			if (message !== null) shadowedTokenCount += meter.estimateMessage(message);
 		}
 		plans.push({
+			toolName,
 			assistantSeq: seq,
 			resultSeqs,
 			...(stats === undefined ? {} : { stats }),
@@ -114,12 +132,17 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 	return plans;
 }
 
-/** Build the tombstone line that replaces the run. */
+/** Build the tombstone line that replaces a clear_mind run. */
 export function tombstoneText(stats: CollapsePlan["stats"]): string {
 	if (stats === undefined) {
 		return "clear-mind: checkpoint committed; this call and its result were folded away. See the <compacted-summary> checkpoint earlier in the conversation.";
 	}
 	return "clear-mind: cleared " + stats.clearedNodes + " messages (~" + stats.clearedTokens + " tokens) into checkpoint seq " + stats.checkpointSeq + "; this call and its result were folded away. See the <compacted-summary> checkpoint earlier in the conversation.";
+}
+
+/** Build the tombstone line that replaces a mind_map survey run. */
+export function mindMapTombstoneText(): string {
+	return "clear-mind: mind_map survey completed; this call and its result were folded away.";
 }
 
 /**
@@ -142,13 +165,17 @@ export function applyCollapse(session: Session, plan: CollapsePlan): number {
 	// assistant/message: the token meter requires every assistant/message to
 	// fall inside a step/start..step/end window, and plugin appends between
 	// steps would poison the meter replay for the whole session.
+	const text = plan.toolName === "mind_map" ? mindMapTombstoneText() : tombstoneText(plan.stats);
+	const summary = plan.toolName === "mind_map"
+		? "mind_map self-collapse tombstone (one line)"
+		: "clear-mind self-collapse tombstone (one line)";
 	const tombstone = session.append("user/message", createUserMessage({
-		content: [{ type: "text", text: tombstoneText(plan.stats) }],
+		content: [{ type: "text", text }],
 		source: {
 			kind: "plugin",
 			plugin: CLEAR_MIND_PLUGIN,
 			form: "notice",
-			summary: "clear-mind self-collapse tombstone (one line)"
+			summary
 		}
 	}), {
 		surfaceOp: { op: "replace", start: SessionSeq(plan.assistantSeq), end: SessionSeq(lastSeq) },
@@ -162,7 +189,12 @@ export function collapseClearMindRuns(session: Session, meter: MeterPort): numbe
 	return planCollapses(session, meter).map((plan) => applyCollapse(session, plan));
 }
 
-/** Exposed for tests: the tool name collapse recognizes. */
+/** Exposed for tests: the tool names collapse recognizes. */
+export function collapseToolNames(): readonly string[] {
+	return [CLEAR_MIND_TOOL, MIND_MAP_TOOL];
+}
+
+/** Exposed for backwards-compatibility in tests. */
 export function collapseToolName(): string {
 	return CLEAR_MIND_TOOL;
 }

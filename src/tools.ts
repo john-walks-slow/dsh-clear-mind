@@ -34,7 +34,7 @@ export function mindMapTool(meter: MeterPort) {
 	return defineTool({
 		name: "mind_map",
 		description:
-			"Survey your own context surface: every model-visible message with its stable seq id, role, token weight, and a one-line preview, grouped by turn. Valid clear_mind range boundaries are marked. Call this first when planning a clear_mind — pick start/end seqs from this map. Takes no arguments.",
+			"Survey your own context surface: every model-visible message with its stable seq id, role, token weight, and a one-line preview, grouped by turn. Valid clear_mind range boundaries are marked. Call this first when planning a clear_mind — pick start/end seqs from this map. This call and its result self-erase at the next step boundary once consumed; the human-side history stays untouched. Takes no arguments.",
 		parameters: {},
 		output: {
 			schema: {
@@ -96,17 +96,17 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 	return defineTool({
 		name: "clear_mind",
 		description:
-			"Clear your mind: replace a range of your own conversation history with a distilled checkpoint you write, freeing context and attention. First call mind_map to get seq ids. Args: start (seq or 'first'), end (seq or 'latest' = everything before the current step), notes (the checkpoint: user intent verbatim, key facts/paths/ids, abandoned paths and why, open threads, next action — absorb any prior checkpoints inside the range). Keep recent in-flight turns verbatim; clear completed or abandoned phases. This call and its result self-erase at the next step boundary; the human-side history stays untouched. Read the clear-mind skill for the full workflow.",
+			"Clear your mind: replace a range of your own conversation history with a distilled checkpoint you write, freeing context and attention. First call mind_map to get seq ids. Args: start (integer seq e.g. 123 or 'first'), end (integer seq e.g. 456 or 'latest' = everything before the current step), notes (the checkpoint: user intent verbatim, key facts/paths/ids, abandoned paths and why, open threads, next action — absorb any prior checkpoints inside the range). Keep recent in-flight turns verbatim; clear completed or abandoned phases. This call and its result self-erase at the next step boundary; the human-side history stays untouched. Read the clear-mind skill for the full workflow.",
 		parameters: {
 			start: {
-				oneOf: [{ type: "integer" }, { type: "string", const: "first" }],
+				oneOf: [{ type: "integer" }, { type: "string" }],
 				required: true,
-				description: "Range start: a surface seq from mind_map, or 'first'."
+				description: "Range start: an integer surface seq from mind_map (e.g. 123), or 'first'."
 			},
 			end: {
-				oneOf: [{ type: "integer" }, { type: "string", const: "latest" }],
+				oneOf: [{ type: "integer" }, { type: "string" }],
 				required: true,
-				description: "Range end: a surface seq from mind_map, or 'latest' (everything before the current step)."
+				description: "Range end: an integer surface seq from mind_map (e.g. 456), or 'latest' (everything before the current step)."
 			},
 			notes: {
 				type: "string", required: true,

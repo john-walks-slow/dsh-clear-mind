@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { Session, deriveEventMessage } from "@deepseek-ai/dsh-session";
 import type { SessionHeader, SessionId } from "@deepseek-ai/dsh-session";
-import { ToolCallId, createAssistantMessage } from "@deepseek-ai/dsh-llm";
+import { ToolCallId, createAssistantMessage, createToolResultMessage } from "@deepseek-ai/dsh-llm";
 import { scanSurface } from "../src/scan.js";
 import { renderSurvey } from "../src/render.js";
 import { commitClearMind } from "../src/commit.js";
 import { resolveConfig } from "../src/config.js";
-import { appendTurn, replicaMeter } from "./helpers.js";
+import { appendTurn, replicaMeter, SessionSeq } from "./helpers.js";
 
 const LOREM = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor "; // 82 chars
 
@@ -16,12 +16,12 @@ test("scanSurface reports kinds, previews, boundaries, and latest end", () => {
 	const session = Session.create("s1" as never);
 	appendTurn(session, 1, [
 		{ user: "fix the build error in packages/api" },
-		{ calls: [{ name: "bash", result: "npm error code ELIFECYCLE" }] },
+		{ calls: [{ name: "bash", args: JSON.stringify({ command: "npm test", description: "Run the project test suite" }), result: "npm error code ELIFECYCLE" }] },
 		{ text: "the build broke because of a missing import" }
 	]);
 	appendTurn(session, 2, [
 		{ user: "try vite instead" },
-		{ calls: [{ name: "read", result: "42 lines" }] },
+		{ calls: [{ name: "read", args: JSON.stringify({ path: "packages/api/vite.config.ts" }), result: "42 lines" }] },
 		{ text: "vite works now" }
 	]);
 	const meter = replicaMeter();
@@ -34,7 +34,9 @@ test("scanSurface reports kinds, previews, boundaries, and latest end", () => {
 	assert.match(user0.preview, /fix the build error/);
 	const tool0 = survey.nodes[2];
 	assert.equal(tool0.toolName, "bash");
-	assert.match(tool0.preview, /bash: npm error/);
+	assert.equal(tool0.preview, "bash · Run the project test suite", "tool line mirrors the UI row summary");
+	const tool2 = survey.nodes[6];
+	assert.equal(tool2.preview, "read · packages/api/vite.config.ts", "read tool line mirrors the path");
 	// boundary semantics: cutting before a tool/result or after a
 	// call-carrying assistant would split a pair — those flags are false.
 	const flags = survey.nodes.map((node) => [node.validStart, node.validEnd].join(":"));
@@ -102,7 +104,7 @@ test("scanSurface marks checkpoints after a clear_mind commit", () => {
 
 test("renderSurvey shows markers, seqs, and the non-monotonic note", () => {
 	const session = Session.create("s1" as never);
-	appendTurn(session, 1, [{ user: "first task" }, { calls: [{ name: "bash", result: "ok" }] }]);
+	appendTurn(session, 1, [{ user: "first task" }, { calls: [{ name: "bash", args: JSON.stringify({ command: "echo ok", description: "Print the ok marker" }), result: "ok" }] }]);
 	appendTurn(session, 2, [{ user: "second task" }, { text: "done" }]);
 	const text = renderSurvey(scanSurface(session, replicaMeter()));
 	assert.match(text, /Mind surface: 5 nodes/);
@@ -110,7 +112,7 @@ test("renderSurvey shows markers, seqs, and the non-monotonic note", () => {
 	assert.match(text, /▸/);
 	assert.match(text, /◂/);
 	assert.match(text, /turn 1/);
-	assert.match(text, /bash: ok/);
+	assert.match(text, /bash · Print the ok marker/);
 	assert.match(text, /Latest clearable end/);
 	assert.match(text, /clear-mind playbook/);
 	assert.match(text, /已放弃的路径/);
@@ -166,7 +168,7 @@ test("scanSurface previews stay single-line and bounded", () => {
 	assert.ok(preview.length <= 50, "preview bounded: " + preview.length);
 });
 
-test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
+test("call and tool previews mirror the UI's unexpanded-row summaries", () => {
 	const session = Session.create("s1" as never);
 	appendTurn(session, 1, [
 		{ user: "rework the config loader" },
@@ -193,6 +195,12 @@ test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
 				{ name: "bash", args: "{broken json", result: "ok" },
 				{ name: "bash", result: "ok" }
 			]
+		},
+		{
+			calls: [
+				// an error result shows the failure line, as the UI's error rows do
+				{ name: "bash", args: JSON.stringify({ command: "cat missing.txt", description: "Read the config file" }), result: "cat: missing.txt: No such file or directory", isError: true }
+			]
 		}
 	]);
 	const survey = scanSurface(session, replicaMeter());
@@ -208,6 +216,36 @@ test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
 	const third = survey.nodes[8].preview;
 	assert.equal(third, "→ mcp__degoog__search · vite plugin crash, bash, bash");
 	assert.ok(!third.includes("undefined"), "no undefined leaks from broken args");
+	// tool-result lines mirror their call's unexpanded-row summary
+	assert.equal(survey.nodes[2].preview, "bash · Run the config test suite");
+	assert.equal(survey.nodes[3].preview, "edit · src/config/loadSettings.ts");
+	assert.equal(survey.nodes[4].preview, "grep · loadSettings");
+	assert.equal(survey.nodes[6].preview, "web_search · fix vite build, vite config");
+	assert.equal(survey.nodes[7].preview, "bash · npm test --filter config");
+	assert.equal(survey.nodes[9].preview, "mcp__degoog__search · vite plugin crash");
+	assert.equal(survey.nodes[10].preview, "bash", "broken-args call degrades to the bare name on its tool line too");
+	assert.equal(survey.nodes[11].preview, "bash", "empty-args call degrades to the bare name on its tool line too");
+	// error rows replace the summary with the failure line — UI parity
+	assert.equal(survey.nodes[12].preview, "→ bash · Read the config file");
+	assert.equal(survey.nodes[13].preview, "bash ! cat: missing.txt: No such file or directory");
+	assert.equal(survey.nodes[13].isError, true);
+});
+
+test("orphan tool results fall back to the output preview", () => {
+	const session = Session.create("s1" as never);
+	appendTurn(session, 1, [{ user: "hello" }, { text: "hi" }]);
+	session.append("turn/start", { turn: 2 });
+	// a tool/result whose callId matches no assistant tool-call (anomalous log)
+	const message = createToolResultMessage({
+		callId: ToolCallId("call-orphan"),
+		content: [{ type: "text", text: "orphan output line" }],
+		isError: false
+	});
+	session.append("tool/result", { turn: 2, step: 1, message }, { surfaceOp: "append", sourceEventSeqs: [SessionSeq(2)] });
+	const survey = scanSurface(session, replicaMeter());
+	const orphan = survey.nodes[survey.nodes.length - 1];
+	assert.equal(orphan.kind, "tool");
+	assert.equal(orphan.preview, "tool: orphan output line");
 });
 
 test("call hints relativize workspace paths and abbreviate home like the UI rows", () => {
@@ -239,6 +277,11 @@ test("call hints relativize workspace paths and abbreviate home like the UI rows
 	assert.ok(preview.includes("edit · test/helpers.ts"), "edit path relativized: " + preview);
 	assert.ok(preview.includes("read · ~/documents/notes.md"), "home path abbreviated: " + preview);
 	assert.ok(preview.includes("read · /etc/hosts"), "foreign path untouched: " + preview);
+	// tool lines carry the same transformed summaries as the call line
+	assert.equal(survey.nodes[2].preview, "read · src/config.ts");
+	assert.equal(survey.nodes[3].preview, "edit · test/helpers.ts");
+	assert.equal(survey.nodes[4].preview, "read · ~/documents/notes.md");
+	assert.equal(survey.nodes[5].preview, "read · /etc/hosts");
 });
 
 test("call hint lines truncate at the line cap with an ellipsis", () => {

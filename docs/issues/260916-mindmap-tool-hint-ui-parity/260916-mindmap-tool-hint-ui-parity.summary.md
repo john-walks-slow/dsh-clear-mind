@@ -23,3 +23,11 @@
 
 - review：`260916-mindmap-tool-hint-ui-parity.review.md`（条件准入 + S1 方案 a 落实记录）
 - validation：`260916-mindmap-tool-hint-ui-parity.validation.md`（需重启 dsh 后实机验证三场景）
+
+## 追加修复（260917）：tool 结果行也镜像 UI 未展开行
+
+**用户实机反馈**：重启后「mindmap 还是没像 UI 那样输出 bash 的 summary」。排查（读取线上会话日志 compare-llm 实际渲染的 mind_map 文本）确认：新构建已生效，assistant 调用行已显示 `bash · <description>`（如 `→ bash · Check project workspace state`）；但**tool 结果行**（`bash: <原始输出>`）仍显示输出原文——这是用户眼里最像「bash 行」的行，UI 未展开行显示的是调用 summary 而非输出，故仍不一致。
+
+**修复**：`scanSurface` 日志遍历时为每个 tool-call 计算 hint 并存 `callHints` map（callId → `name · summary`，与调用行同源同值）；`previewOfMessage` 的 tool-result 分支改为：成功结果直接显示其调用的 hint（UI parity）；错误结果显示 `name ! <失败首行>`（与 UI error 行以 failureLine 替换 summary 一致，维持原状）；孤儿结果（日志中无对应调用）保留 `name: <输出>` 回退。assistant 调用行不变（已正确）。
+
+**取舍**：无参/坏参工具（如 mind_map 自身，args 为 `{}`）的结果行降级为裸名——UI 对这类调用也只显示 callId 或原始 JSON 头，且 mind_map/clear_mind 调用对下一步即折叠为墓碑，信息损失极小；退出码失败的 bash（isError=false + `[exit code: N]`）保留 summary——UI 同样保留 description 文本、只翻「失败」徽标，文本行无法镜像徽标（已记为 accepted divergence）。测试：镜像测试扩展 tool 行断言（9 行）+ 错误态用例 + 孤儿结果回退用例；首个 scan 测试与 renderSurvey 测试的 bash 调用补上 description 参数以钉住 summary 行为。`npm run check` / `npm test`（46/46）/ `npm run build` 通过。需再次重启 dsh 生效。

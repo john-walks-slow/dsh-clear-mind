@@ -16,7 +16,8 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
-    "LICENSE"
+    "LICENSE",
+    "assets"
   ],
   "scripts": {
     "build": "rm -rf dist lib/client.js && tsc -p tsconfig.build.json && node scripts/build-client.mjs",

@@ -7,6 +7,9 @@
 
 让模型自主压缩自身上下文的 DeepSeek Harness 插件（cordis plugin）：当失败探索和大输出把上下文拖累时，模型调用 `clear_mind`「清空脑子」——把一段对话历史替换成自己写的检查点，只留笔记，释放注意力与 token 预算。人类侧的会话记录始终原样保留，每次清理在 GUI 里都是一条可展开的压缩行。
 
+
+![dsh-clear-mind in the DSH settings: proactive reminder thresholds and compaction guards](assets/screenshot-1.png)
+
 ## 模型看到什么
 
 **`mind_map`** 俯瞰模型自己的上下文表面：每条消息的稳定 seq、角色、token 重量、一行预览，按 turn 分组；`▸` 标记合法区间起点、`◂` 合法区间终点、`◆` 既有检查点，末尾内附 clear-mind 操作手册（何时清、怎么选区间、怎么写 notes、提交前自检）：

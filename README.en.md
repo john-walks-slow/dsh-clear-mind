@@ -7,6 +7,9 @@
 
 A DeepSeek Harness (cordis) plugin for model-autonomous context compaction: when failed exploration and large outputs drag the context down, the model calls `clear_mind` to "clear its mind" — replacing a span of conversation history with a checkpoint it wrote itself, keeping only the notes and freeing attention and token budget. The human-side history is never touched: every clear renders in the GUI as an expandable compaction row.
 
+
+![dsh-clear-mind in the DSH settings: proactive reminder thresholds and compaction guards](assets/screenshot-1.png)
+
 ## What the model sees
 
 **`mind_map`** surveys the model's own context surface: every message with its stable seq id, role, token weight, and a one-line preview, grouped by turn; `▸` marks a valid range start, `◂` a valid range end, `◆` a prior checkpoint, and the result carries the clear-mind playbook (when to clear, how to pick a range, how to write the notes, the pre-commit self-check):

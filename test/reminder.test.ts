@@ -180,15 +180,15 @@ test("a failing context-window resolution degrades to the step reason only", asy
 	assert.ok(!trigger.reasons.some((reason) => reason.includes("窗口")));
 });
 
-test("buildReminderMessage renders a relaxed phase-first system-reminder notice", () => {
+test("buildReminderMessage renders a system-reminder notice with the relaxed phase-first ending", () => {
 	const message = buildReminderMessage({ reasons: ["测试原因"], turn: 1, step: 15, totalTokens: 500, contextWindow: undefined });
 	const text = message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
 	assert.ok(text.includes("<system-reminder>"));
 	assert.ok(text.includes("测试原因"));
 	assert.ok(text.includes("</system-reminder>"));
-	// relaxed tone: finish the current phase first, no forced interruption
-	assert.ok(text.includes("先做完"));
-	assert.ok(text.includes("不要求立即执行"));
+	// the old "clear immediately after the atomic action" push is relaxed into
+	// "finish the current phase first"
+	assert.ok(text.includes("先把这一阶段的事做完再清理"));
 	assert.ok(!text.includes("立刻清理"));
 	assert.equal(message.source.kind, "plugin");
 });

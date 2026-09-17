@@ -50,8 +50,8 @@ function renderReminderText(trigger: ReminderTrigger): string {
 		"<system-reminder>",
 		"[Context / Step Alert] 当前会话已达到主动清理检查点：",
 		"- 原因：" + trigger.reasons.join("；"),
-		"- 说明：长上下文或单轮过多 Step 会累积过时试错过程与冗余工具输出，缓慢推高推理成本。不必为此中断手头工作。",
-		"- 行动指引：把当前阶段的事情先做完，到自然边界（子任务收尾、结论落定、切换方向前）再清理即可：先调用 mind_map 审视上下文表面（返回内附 clear-mind 操作指引：区间选择、notes 模板、提交前自检），将已完成阶段/已确认放弃的探索通过 clear_mind 提炼为移交检查点。本提醒只标记清理时机，不要求立即执行；宁可稍晚清理，也不要在关键推理中途打断自己。",
+		"- 建议：长上下文或单轮过多 Step 容易累积过时试错过程与冗余工具输出，分散注意力并增加推理成本。",
+		"- 行动指引：建议先调用 mind_map 审视当前上下文表面（返回内附 clear-mind 操作指引：区间选择、notes 模板、提交前自检），将已完成阶段/已确认放弃的探索通过 clear_mind 提炼为移交检查点，仅保留核心目标、约束与下一步。若当前阶段尚未完成，先把这一阶段的事做完再清理即可。",
 		"</system-reminder>"
 	];
 	return lines.join("\n");

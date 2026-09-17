@@ -114,8 +114,9 @@ test("renderSurvey shows markers, seqs, and the non-monotonic note", () => {
 	assert.match(text, /Latest clearable end/);
 	assert.match(text, /clear-mind playbook/);
 	assert.match(text, /已放弃的路径/);
-	assert.match(text, /clear_mind 单独一条消息/);
 	assert.match(text, /要清多段时/);
+	assert.doesNotMatch(text, /单独一条消息/);
+	assert.doesNotMatch(text, /重述/);
 });
 
 test("renderSurvey omits the playbook when nothing is clearable yet", () => {

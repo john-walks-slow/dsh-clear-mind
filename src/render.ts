@@ -98,8 +98,8 @@ export function renderSurvey(survey: Survey): string {
 	if (survey.latestEndSeq !== undefined) {
 		lines.push("");
 		lines.push("— clear-mind playbook —");
-		lines.push("选区间：清「已完成的旧阶段」或「确认失败的弯路」；保留最近 1-2 个回合原文（进行中的工作需 verbatim）；区间内的旧检查点 ◆ 必须吸收进新 notes。阶段边界就清，别等上下文满了才清——上下文越满，思考质量越差。");
-		lines.push("写 notes（给「未来的你」的移交文档，只留结论与必要信息）：");
+		lines.push("选区间：清「已完成的旧阶段」或「可收敛支线/弯路」；至少保留最近 1-2 个回合原文（进行中的工作需 verbatim）；区间内的旧检查点 ◆ 必须吸收进新 notes。区间清理后，未来的你将只能看到 notes。请确保 notes中记录了该区间内对未来可能有用的全部信息，宁滥勿缺。");
+		lines.push("notes 参考模板：");
 		lines.push("  ## 任务与用户意图（关键处引用原话）");
 		lines.push("  ## 关键事实与决策（文件路径、命令、版本号、id、数据——逐字保留）");
 		lines.push("  ## 已放弃的路径（什么失败了、为什么、别再试）");

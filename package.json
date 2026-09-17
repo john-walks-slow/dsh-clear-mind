@@ -25,7 +25,8 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
     "prepare": "npm run build",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "release": "npm run test && npm version patch && npm pack --pack-destination /tmp"
   },
   "dsh": {
     "bundle": {

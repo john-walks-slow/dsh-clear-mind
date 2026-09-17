@@ -122,3 +122,20 @@ npm test        # tsc(incl. test) + node --test dist/test/*.test.js, 47 cases
 Unit tests run against a heuristic meter copy and real Session construction (including full-log shadow-price assertions); at runtime the platform `ctx.tokenMeter` is bound.
 
 - Platform contracts and development discipline: see `AGENTS.md`; research/plan/review docs: see `docs/features/`
+
+## Release a new version
+
+One command runs tests, bumps the version and packs (`npm version` also commits and tags):
+
+```bash
+npm run release        # patch; for bigger changes: npm version minor or major
+```
+
+Then publish with the fingerprint flow and push:
+
+```bash
+node ~/.agents/skills/npm-publish/scripts/publish-webauthn.cjs /tmp/dsh-clear-mind-<newver>.tgz
+git push --follow-tags
+```
+
+Verify with `npm view dsh-clear-mind version`. When releasing several packages, check "do not challenge for the next 5 minutes" on the webauthn page to publish them all with one fingerprint.

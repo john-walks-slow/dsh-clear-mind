@@ -42,7 +42,7 @@ test("planCollapses finds a solo successful clear_mind run", () => {
 	const plan = plans[0];
 	assert.equal(plan.assistantSeq, session.surface.nodes[session.surface.nodes.length - 2]);
 	assert.equal(plan.resultSeqs.length, 1);
-	assert.deepEqual(plan.stats, { clearedNodes: report.clearedNodes, clearedTokens: report.clearedTokens, checkpointSeq: report.checkpointSeq });
+	assert.deepEqual(plan.stats, { clearedNodes: report.clearedNodes, clearedTokens: report.clearedTokens, checkpointSeqs: [report.checkpointSeq] });
 	assert.ok(plan.shadowedTokenCount > 0);
 });
 
@@ -72,6 +72,61 @@ assert.equal((tombstoneEvent.data as { source: { kind: string; plugin: string } 
 	assert.equal(protocol.replaces, 2, "commit + collapse replacements");
 	// idempotent: a second scan finds nothing left to collapse
 	assert.equal(planCollapses(session, meter).length, 0);
+});
+
+test("a same-message multi clear_mind batch collapses into one tombstone with aggregated stats", () => {
+	const session = Session.create("s-multi" as never);
+	appendTurn(session, 1, [
+		{ user: "explore " + LOREM.repeat(20) },
+		{ calls: [{ name: "bash", result: LOREM.repeat(60) }] }
+	]);
+	appendTurn(session, 2, [
+		{ user: "dig deeper " + LOREM.repeat(20) },
+		{ calls: [{ name: "read", result: LOREM.repeat(60) }] }
+	]);
+	session.append("turn/start", { turn: 3 });
+	const meter = replicaMeter();
+	// One assistant message, TWO clear_mind calls. The executor runs them
+	// serially: commit 1 -> result 1 lands -> commit 2 -> result 2 lands.
+	const assistant = appendOpenAssistant(session, 3, [{ name: "clear_mind" }, { name: "clear_mind" }]);
+	const seqs = [...(session.surface.nodes as readonly number[])];
+	const first = commitClearMind({ session, meter, config, route }, seqs[0], seqs[2], "## Notes\nsegment one distilled");
+	appendToolResult(session, 3, 3, assistant, 0, "Cleared " + first.clearedNodes + " messages.", {
+		meta: { clearedNodes: first.clearedNodes, clearedTokens: first.clearedTokens, checkpointSeq: first.checkpointSeq }
+	});
+	const second = commitClearMind({ session, meter, config, route }, seqs[3], seqs[5], "## Notes\nsegment two distilled");
+	appendToolResult(session, 3, 3, assistant, 1, "Cleared " + second.clearedNodes + " messages.", {
+		meta: { clearedNodes: second.clearedNodes, clearedTokens: second.clearedTokens, checkpointSeq: second.checkpointSeq }
+	});
+	// the whole batch collapses as ONE run with aggregated stats
+	const plans = planCollapses(session, meter);
+	assert.equal(plans.length, 1);
+	const plan = plans[0];
+	assert.equal(plan.resultSeqs.length, 2);
+	assert.deepEqual(plan.stats, {
+		clearedNodes: first.clearedNodes + second.clearedNodes,
+		clearedTokens: first.clearedTokens + second.clearedTokens,
+		checkpointSeqs: [first.checkpointSeq, second.checkpointSeq]
+	});
+	const tombstoneSeqs = collapseClearMindRuns(session, meter);
+	assert.equal(tombstoneSeqs.length, 1);
+	const tombstoneEvent = session.eventAt(SessionSeq(tombstoneSeqs[0]));
+	assert.ok(tombstoneEvent !== undefined && tombstoneEvent.type === "user/message");
+	const message = deriveEventMessage(tombstoneEvent);
+	assert.ok(message !== null, "tombstone derives to a visible message");
+	assert.match(
+		(message.content[0] as { text: string }).text,
+		new RegExp("cleared " + (first.clearedNodes + second.clearedNodes) + " messages \\(~" + (first.clearedTokens + second.clearedTokens) + " tokens\\) into checkpoints seq " + first.checkpointSeq + ", " + second.checkpointSeq)
+	);
+	// pairing stays balanced and the protocol holds: 2 commits + 1 collapse
+	const after = session.surface.nodes as readonly number[];
+	for (const seq of after) {
+		assert.equal(toolPairingBalancedBefore(session, SessionSeq(seq)), true, "balancedBefore at " + seq);
+		assert.equal(toolPairingBalancedAfter(session, SessionSeq(seq)), true, "balancedAfter at " + seq);
+	}
+	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
+	assert.equal(protocol.replaces, 3);
+	assert.equal(planCollapses(session, meter).length, 0, "idempotent");
 });
 
 test("tombstone text without meta stays generic but informative", () => {

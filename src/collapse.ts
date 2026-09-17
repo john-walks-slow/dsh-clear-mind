@@ -11,6 +11,8 @@
  * Detection is stateless: every agent/pre-step scans the surface for
  * assistant/message events whose tool-calls are ALL clear_mind (or ALL mind_map)
  * and whose matching tool/result events follow contiguously, all successful.
+ * A multi-segment batch (several clear_mind calls in one message) collapses into
+ * ONE tombstone whose stats aggregate every result's commit report.
  * For mind_map, collapse is deferred until subsequent events appear on the surface
  * so the model can read the survey in the immediately following step.
  * Mixed batches (clear_mind/mind_map alongside other tools) are skipped: the sibling
@@ -30,8 +32,8 @@ export interface CollapsePlan {
 	readonly assistantSeq: number;
 	/** Surface seqs of the matching tool/result events, in surface order. */
 	readonly resultSeqs: readonly number[];
-	/** Commit stats read from the tool/result meta (when present, clear_mind only). */
-	readonly stats?: { readonly clearedNodes: number; readonly clearedTokens: number; readonly checkpointSeq: number };
+	/** Commit stats aggregated across the batch's tool/results (when present). */
+	readonly stats?: { readonly clearedNodes: number; readonly clearedTokens: number; readonly checkpointSeqs: readonly number[] };
 	/** Fixed-heuristic price of the shadowed nodes (shadow-price protocol). */
 	readonly shadowedTokenCount: number;
 }
@@ -56,8 +58,8 @@ function toolResultBlock(message: Message): { toolCallId?: string; isError?: boo
 	return first;
 }
 
-/** Read the clear_mind commit stats a tool/result persisted in its meta. */
-function statsOfMeta(meta: unknown): CollapsePlan["stats"] {
+/** Read the clear_mind commit stats one tool/result persisted in its meta. */
+function statsOfMeta(meta: unknown): { clearedNodes: number; clearedTokens: number; checkpointSeq: number } | undefined {
 	if (typeof meta !== "object" || meta === null) return undefined;
 	const record = meta as Record<string, unknown>;
 	const clearedNodes = record.clearedNodes;
@@ -65,6 +67,16 @@ function statsOfMeta(meta: unknown): CollapsePlan["stats"] {
 	const checkpointSeq = record.checkpointSeq;
 	if (typeof clearedNodes !== "number" || typeof clearedTokens !== "number" || typeof checkpointSeq !== "number") return undefined;
 	return { clearedNodes, clearedTokens, checkpointSeq };
+}
+
+/** Aggregate per-result commit stats into one batch-level report. */
+function aggregateStats(stats: readonly { clearedNodes: number; clearedTokens: number; checkpointSeq: number }[]): { clearedNodes: number; clearedTokens: number; checkpointSeqs: number[] } | undefined {
+	if (stats.length === 0) return undefined;
+	return {
+		clearedNodes: stats.reduce((sum, stat) => sum + stat.clearedNodes, 0),
+		clearedTokens: stats.reduce((sum, stat) => sum + stat.clearedTokens, 0),
+		checkpointSeqs: stats.map((stat) => stat.checkpointSeq)
+	};
 }
 
 /**
@@ -92,7 +104,7 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 			continue;
 		}
 		const pending = new Set(calls.map((call) => call.id));
-		let stats: CollapsePlan["stats"];
+		const statList: { clearedNodes: number; clearedTokens: number; checkpointSeq: number }[] = [];
 		const resultSeqs: number[] = [];
 		let cursor = index + 1;
 		while (cursor < surface.length) {
@@ -105,7 +117,8 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 			if (resultData.error !== undefined || block.isError === true) break;
 			pending.delete(block.toolCallId);
 			resultSeqs.push(resultSeq);
-			if (stats === undefined) stats = statsOfMeta(resultData.meta);
+			const stat = statsOfMeta(resultData.meta);
+			if (stat !== undefined) statList.push(stat);
 			cursor += 1;
 		}
 		if (resultSeqs.length !== calls.length) continue;
@@ -120,6 +133,7 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 			const message = shadowedEvent === undefined ? null : deriveEventMessage(shadowedEvent);
 			if (message !== null) shadowedTokenCount += meter.estimateMessage(message);
 		}
+		const stats = aggregateStats(statList);
 		plans.push({
 			toolName,
 			assistantSeq: seq,
@@ -132,12 +146,17 @@ export function planCollapses(session: Session, meter: MeterPort): CollapsePlan[
 	return plans;
 }
 
-/** Build the tombstone line that replaces a clear_mind run. */
+/** Build the tombstone line that replaces a clear_mind run (one call or a multi-segment batch). */
 export function tombstoneText(stats: CollapsePlan["stats"]): string {
 	if (stats === undefined) {
 		return "clear-mind: checkpoint committed; this call and its result were folded away. See the <compacted-summary> checkpoint earlier in the conversation.";
 	}
-	return "clear-mind: cleared " + stats.clearedNodes + " messages (~" + stats.clearedTokens + " tokens) into checkpoint seq " + stats.checkpointSeq + "; this call and its result were folded away. See the <compacted-summary> checkpoint earlier in the conversation.";
+	const single = stats.checkpointSeqs.length === 1;
+	const target = single
+		? "checkpoint seq " + stats.checkpointSeqs[0]
+		: "checkpoints seq " + stats.checkpointSeqs.join(", ");
+	const pair = single ? "this call and its result were folded away" : "this call and its results were folded away";
+	return "clear-mind: cleared " + stats.clearedNodes + " messages (~" + stats.clearedTokens + " tokens) into " + target + "; " + pair + ". See the <compacted-summary> checkpoint" + (single ? "" : "s") + " earlier in the conversation.";
 }
 
 /** Build the tombstone line that replaces a mind_map survey run. */

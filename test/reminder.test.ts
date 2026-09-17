@@ -50,9 +50,10 @@ function freshSignal(): AbortSignal {
 	return new AbortController().signal;
 }
 
-test("resolveConfig defaults: the step threshold is 60 steps", () => {
+test("resolveConfig defaults: the step threshold is 100 steps with a 25-step cooldown", () => {
 	const config = resolveConfig();
-	assert.equal(config.reminderThresholdSteps, 60);
+	assert.equal(config.reminderThresholdSteps, 100);
+	assert.equal(config.reminderStepInterval, 25);
 });
 
 test("evaluateReminder fires when the step count crosses the threshold", async () => {
@@ -179,11 +180,15 @@ test("a failing context-window resolution degrades to the step reason only", asy
 	assert.ok(!trigger.reasons.some((reason) => reason.includes("窗口")));
 });
 
-test("buildReminderMessage renders a system-reminder notice", () => {
+test("buildReminderMessage renders a relaxed phase-first system-reminder notice", () => {
 	const message = buildReminderMessage({ reasons: ["测试原因"], turn: 1, step: 15, totalTokens: 500, contextWindow: undefined });
 	const text = message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
 	assert.ok(text.includes("<system-reminder>"));
 	assert.ok(text.includes("测试原因"));
 	assert.ok(text.includes("</system-reminder>"));
+	// relaxed tone: finish the current phase first, no forced interruption
+	assert.ok(text.includes("先做完"));
+	assert.ok(text.includes("不要求立即执行"));
+	assert.ok(!text.includes("立刻清理"));
 	assert.equal(message.source.kind, "plugin");
 });

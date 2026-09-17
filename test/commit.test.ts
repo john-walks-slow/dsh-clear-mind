@@ -88,6 +88,37 @@ test("commitClearMind accepts ranges whose start seq is numerically greater than
 	assert.equal(protocol.replaces, 2);
 });
 
+test("two disjoint segments clear in immediate succession without a fresh mind_map (multi-segment batch)", () => {
+	const session = Session.create("s-multi" as never);
+	appendTurn(session, 1, [
+		{ user: "phase one " + LOREM.repeat(20) },
+		{ calls: [{ name: "bash", result: LOREM.repeat(60) }] },
+		{ text: "phase one done" }
+	]);
+	appendTurn(session, 2, [
+		{ user: "phase two " + LOREM.repeat(20) },
+		{ calls: [{ name: "read", result: LOREM.repeat(60) }] }
+	]);
+	session.append("turn/start", { turn: 3 });
+	const meter = replicaMeter();
+	// Surface: [u1, a1, t1, atext, u2, a2, t2]. Both ranges come from the SAME
+	// survey and commit back-to-back, exactly as a same-message batch would
+	// (the executor runs exclusive tools serially and commitClearMind is sync).
+	const seqs = [...(session.surface.nodes as readonly number[])];
+	const first = commitClearMind({ session, meter, config, route }, seqs[0], seqs[2], "## Notes\nsegment one distilled for the future");
+	assert.equal(first.kind, "cleared");
+	const second = commitClearMind({ session, meter, config, route }, seqs[4], seqs[6], "## Notes\nsegment two distilled for the future");
+	assert.equal(second.kind, "cleared");
+	// two checkpoints stand, with the untouched survivor between them
+	const surface = session.surface.nodes as readonly number[];
+	assert.equal(surface.length, 3);
+	assert.ok(surface.includes(first.checkpointSeq));
+	assert.ok(surface.includes(second.checkpointSeq));
+	assert.ok(surface.includes(seqs[3]), "the node between the segments survives");
+	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
+	assert.equal(protocol.replaces, 2, "each segment transacted independently");
+});
+
 test("commitClearMind rejects ranges that split a tool-call/result pair", () => {
 	const session = fixture();
 	const meter = replicaMeter();

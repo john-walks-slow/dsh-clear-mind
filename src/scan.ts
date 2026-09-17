@@ -84,27 +84,21 @@ function toPreviewLine(text: string): string {
 	return collapsed.length <= PREVIEW_MAX ? collapsed : collapsed.slice(0, PREVIEW_MAX - 1) + "…";
 }
 
-// The hints below mirror how the web client derives an UNEXPANDED tool row's
+// The hint below mirrors how the web client derives an UNEXPANDED tool row's
 // summary from the call arguments, so a map line and the row the user is
 // looking at stay comparable. Value derivation mirrors toolRowModel's
 // deriveSummary (bash shows its description rather than the command, read/edit
 // the path, grep the pattern, web_search the joined queries); the derived
 // summary then passes through the same relativizeToCwd + abbreviateHomePath
 // pair the UI applies uniformly to every variant, so file paths show
-// workspace-relative or `~`-abbreviated exactly like the row. Both lines of a
-// call pair carry them: the assistant call line joins the per-call hints, and
-// each tool-result line shows its own call's hint (successful rows — error
-// rows instead show the failure line, exactly as the UI's error rows replace
-// the summary with the failure line). Known, accepted divergences:
+// workspace-relative or `~`-abbreviated exactly like the row. Known, accepted
+// divergences:
 //  - BashRow renders its raw description without the path transforms (and an
 //    error row renders the failure line instead); the map applies the
-//    transforms uniformly.
+//    transforms uniformly and always shows the call-side summary — errors stay
+//    on the tool-result node's "name !" prefix.
 //  - Malformed or empty arguments degrade to the bare tool name (UI: raw JSON
 //    head or callId), and previews keep the map's hard per-segment/line caps.
-//  - A bash call that failed by exit code (isError=false, "[exit code: N]"
-//    output tail) keeps its summary: the UI likewise keeps the description
-//    text there and only flips a failure badge, which a text line cannot
-//    mirror.
 // Mirror source: dsh-client-ui-tool's client.js (toolRowModel, deriveSummary,
 // relativizeToCwd, abbreviateHomePath) in the dsh checkout at
 // /usr/lib/node_modules/@deepseek-ai/dsh — when dsh is upgraded, re-diff the
@@ -233,25 +227,13 @@ function textOfBlocks(blocks: readonly ContentBlock[]): string {
 }
 
 /** Build the one-line preview for a derived message. */
-function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, string>, callHints: ReadonlyMap<string, string>, display: RowDisplayContext): { preview: string; kind: "user" | "assistant" | "tool"; toolName?: string; isError?: boolean } {
+function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, string>, display: RowDisplayContext): { preview: string; kind: "user" | "assistant" | "tool"; toolName?: string; isError?: boolean } {
 	if (message.role === "user" && message.content.length > 0 && message.content[0].type === "tool-result") {
 		const result = message.content[0];
-		const name = toolNames.get(result.toolCallId);
-		if (result.isError === true) {
-			// Error rows replace the summary with the failure line, as the UI does.
-			const preview = toPreviewLine(textOfBlocks(result.content));
-			return { preview: (name !== undefined ? name : "tool") + " ! " + preview, kind: "tool", toolName: name, isError: true };
-		}
-		const hint = callHints.get(result.toolCallId);
-		if (hint !== undefined) {
-			// Successful tool rows show their call's unexpanded-row summary, mirroring the UI.
-			return { preview: hint, kind: "tool", toolName: name, isError: false };
-		}
-		// Orphan result (its call is not on record — anomalous log; toolNames and
-		// callHints fill in pairs, so name is necessarily undefined here): fall
-		// back to the output preview.
 		const preview = toPreviewLine(textOfBlocks(result.content));
-		return { preview: (name !== undefined ? name : "tool") + ": " + preview, kind: "tool", toolName: name, isError: false };
+		const name = toolNames.get(result.toolCallId);
+		const prefix = (name !== undefined ? name : "tool") + (result.isError === true ? " ! " : ": ");
+		return { preview: prefix + preview, kind: "tool", toolName: name, isError: result.isError === true };
 	}
 	if (message.role === "assistant") {
 		const calls = message.content.filter((block): block is Extract<ContentBlock, { type: "tool-call" }> => block.type === "tool-call");
@@ -277,15 +259,9 @@ function isCheckpointSource(message: Message): boolean {
  * @returns the complete survey data.
  */
 export function scanSurface(session: Session, meter: MeterPort): Survey {
-	// Row-display context mirrors what the web client passes its tool rows:
-	// the session's workspace root and the host account home.
-	const display: RowDisplayContext = { cwd: session.header.cwd, home: homedir() };
-	// Log walk: turn attribution per event and callId -> tool-name + row-hint
-	// resolution (the hint is computed once per call and reused by both the
-	// assistant call line and the call's tool-result line).
+	// Log walk: turn attribution per event and callId -> tool-name resolution.
 	const turnsBySeq = new Map<number, number | null>();
 	const toolNames = new Map<string, string>();
-	const callHints = new Map<string, string>();
 	let currentTurn: number | null = null;
 	const total = session.seq;
 	for (let seq = 0; seq < total; seq++) {
@@ -295,15 +271,15 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		else if (event.type === "turn/end") currentTurn = null;
 		if (event.type === "assistant/message") {
 			for (const block of (event.data.message as Message).content) {
-				if (block.type === "tool-call") {
-					toolNames.set(block.id, block.name);
-					callHints.set(block.id, callHint(block, display));
-				}
+				if (block.type === "tool-call") toolNames.set(block.id, block.name);
 			}
 		}
 		if (isSurfaceEvent(event)) turnsBySeq.set(event.seq, currentTurn);
 	}
 	const measurement: TokenMeasurement = meter.measure(session);
+	// Row-display context mirrors what the web client passes its tool rows:
+	// the session's workspace root and the host account home.
+	const display: RowDisplayContext = { cwd: session.header.cwd, home: homedir() };
 	const heuristicBySeq = new Map<number, number>();
 	for (const node of measurement.nodes) heuristicBySeq.set(node.seq, node.heuristicTokens);
 	const nodes: SurveyNode[] = [];
@@ -313,7 +289,7 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		if (event === undefined || !isSurfaceEvent(event)) continue;
 		const message = deriveEventMessage(event);
 		const tokens = message === null ? 0 : (heuristicBySeq.get(seq) ?? meter.estimateMessage(message));
-		const shape = message === null ? { preview: "(empty)", kind: "assistant" as const } : previewOfMessage(message, toolNames, callHints, display);
+		const shape = message === null ? { preview: "(empty)", kind: "assistant" as const } : previewOfMessage(message, toolNames, display);
 		nodes.push({
 			seq,
 			turn: turnsBySeq.get(seq) ?? null,

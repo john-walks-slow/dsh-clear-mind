@@ -4,9 +4,6 @@
  * One line per surface node grouped by turn:
  *   ▸ 12 ◂ user  1.2k "fix the build error…"
  * where ▸ marks a valid range start, ◂ a valid range end, ◆ a prior checkpoint.
- * Tool-result lines carry their call's unexpanded-row summary (UI parity,
- * e.g. "bash · Run the tests"); "name ! …" marks an error result's failure
- * line and "name: …" an orphan result's output preview.
  *
  * Seqs are surface-position identities, NOT numeric intervals: after any
  * replacement lands, the map is non-monotonic in seq. The header says so.

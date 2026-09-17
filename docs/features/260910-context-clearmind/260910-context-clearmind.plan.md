@@ -103,7 +103,7 @@ compaction/end    {compactionId, turn}
 ## 4. 项目结构
 
 ```
-/root/projects/dsh-clear-mind/
+dsh-clear-mind/
 ├── package.json        # name: dsh-clear-mind；dependencies 对齐 0.1.2-rc.1 并 npm install（dev-dsh-plugin 坑）
 ├── cordis.patch.yml    # - insert: [{id: clear-mind, name: dsh-clear-mind}]
 ├── tsconfig.json       # NodeNext, outDir dist

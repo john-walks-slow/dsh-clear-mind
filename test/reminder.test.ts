@@ -188,7 +188,7 @@ test("buildReminderMessage renders a system-reminder notice with the relaxed pha
 	assert.ok(text.includes("</system-reminder>"));
 	// the old "clear immediately after the atomic action" push is relaxed into
 	// "finish the current phase first"
-	assert.ok(text.includes("先把这一阶段的事做完再清理"));
+	assert.ok(text.includes("先把这一阶段的工作做完再清理"));
 	assert.ok(!text.includes("立刻清理"));
 	assert.equal(message.source.kind, "plugin");
 });

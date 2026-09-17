@@ -10,7 +10,7 @@
 | 验证步骤 | 预期结果 | 实际结果 | 状态 | 备注/证据 |
 | --- | --- | --- | --- | --- |
 | 重启 dsh 后，在有 bash 调用（带 description）的会话里触发 mind_map | 地图中该 assistant 行显示 `bash · <description 首行>`，命令本身不出现；与 UI 未展开行一致 | | 待验证 | |
-| 有 read/edit 调用（绝对路径参数，如 /root/projects/… 下文件）的会话里触发 mind_map | hint 显示工作区相对路径（如 `read · src/config.ts`）；home 下的路径显示 `~/…`；与 UI 未展开行一致 | | 待验证 | |
+| 有 read/edit 调用（绝对路径参数，如 <项目目录>/… 下文件）的会话里触发 mind_map | hint 显示工作区相对路径（如 `read · src/config.ts`）；home 下的路径显示 `~/…`；与 UI 未展开行一致 | | 待验证 | |
 | 有 grep/web_search 调用的会话里触发 mind_map | `grep · <pattern>`、`web_search · <query1, query2>`；与 UI 未展开行一致 | | 待验证 | |
 
 ## 验证结论

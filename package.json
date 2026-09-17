@@ -1,7 +1,7 @@
 {
   "name": "dsh-clear-mind",
   "version": "0.1.0",
-  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface (its description carries when-to-clear signals, its result the how-to-clear playbook), clear_mind replaces a chosen span with a model-written checkpoint, and a proactive reminder nudges the model when the context grows long.",
+  "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface (seqs, token weights, clear-boundary markers and the clear-mind playbook), clear_mind replaces a chosen span with a model-written checkpoint through the platform's native compaction transaction, and a proactive reminder nudges the model when the context grows long. dsh-clear-mind：让模型自主压缩自身上下文——mind_map 俯瞰上下文表面（seq/token/清理边界标记 + 清理手册），clear_mind 把一段对话历史替换成模型自写的检查点（走平台原生 compaction 事务，GUI 可展开审计），上下文涨长或单轮步数过多时主动提醒模型清理。",
   "type": "module",
   "main": "./dist/src/index.js",
   "exports": {
@@ -15,13 +15,16 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist lib/client.js && tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm test"
   },
   "dsh": {
     "bundle": {
@@ -38,11 +41,29 @@
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
+    "context-compaction",
     "compaction",
+    "context-window",
+    "checkpoint",
+    "clear-mind",
     "context",
-    "clear-mind"
+    "memory",
+    "上下文压缩",
+    "上下文",
+    "检查点",
+    "上下文管理",
+    "清理"
   ],
   "license": "MIT",
+  "author": "johnnren",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/john-walks-slow/dsh-clear-mind.git"
+  },
+  "homepage": "https://github.com/john-walks-slow/dsh-clear-mind#readme",
+  "bugs": {
+    "url": "https://github.com/john-walks-slow/dsh-clear-mind/issues"
+  },
   "engines": {
     "node": ">=22.5"
   },

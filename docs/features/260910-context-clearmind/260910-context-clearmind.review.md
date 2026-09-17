@@ -1,6 +1,6 @@
 # 检视报告 — dsh-clear-mind（模型自主上下文压缩插件）
 
-日期：2026-09-10 ｜ 检视人：reviewer 子代理 ｜ 对象：/root/projects/dsh-clear-mind 全部新增文件
+日期：2026-09-10 ｜ 检视人：reviewer 子代理 ｜ 对象：dsh-clear-mind 仓库全部新增文件
 
 ## 概要
 
@@ -23,7 +23,7 @@
 
 | ID | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- |
-| S1 | package.json（dependencies/devDependencies）；dist/src/index.js:19、dist/src/config.js:8；src/index.ts:23、src/config.ts:9 | **运行时 import 解析到 devDependencies**。构建产物有两处运行时依赖 devDep：`import "@deepseek-ai/dsh-skill"`（side-effect，dist/src/index.js:19）与 `import z from "@deepseek-ai/schemastery"`（Config 是导出的运行时值，dist/src/config.js:8）。link-package 模式（包内 node_modules 全量安装）下可运行（E2E 即此模式）；但 README 记录的 `pnpm add file:/root/projects/dsh-clear-mind` 安装路径只装生产依赖，两包不在插件自身 node_modules，ESM 解析失败会拖垮整棵 plugin tree——正是项目 AGENTS.md 记录的 link 坑的反向形态。平台惯例：dsh-compaction-basic 把 schemastery 放 dependencies。 | `@deepseek-ai/schemastery` 移入 dependencies；`@deepseek-ai/dsh-skill` 的 side-effect import 改为 type-only（`ctx.skills` 的类型来自模块增强，运行时服务由宿主插件树提供，无需副作用导入）或同样移入 dependencies。发布/安装前用目标安装方式实测一次插件树加载。 |
+| S1 | package.json（dependencies/devDependencies）；dist/src/index.js:19、dist/src/config.js:8；src/index.ts:23、src/config.ts:9 | **运行时 import 解析到 devDependencies**。构建产物有两处运行时依赖 devDep：`import "@deepseek-ai/dsh-skill"`（side-effect，dist/src/index.js:19）与 `import z from "@deepseek-ai/schemastery"`（Config 是导出的运行时值，dist/src/config.js:8）。link-package 模式（包内 node_modules 全量安装）下可运行（E2E 即此模式）；但 README 记录的 `pnpm add file:<本地仓库路径>` 安装路径只装生产依赖，两包不在插件自身 node_modules，ESM 解析失败会拖垮整棵 plugin tree——正是项目 AGENTS.md 记录的 link 坑的反向形态。平台惯例：dsh-compaction-basic 把 schemastery 放 dependencies。 | `@deepseek-ai/schemastery` 移入 dependencies；`@deepseek-ai/dsh-skill` 的 side-effect import 改为 type-only（`ctx.skills` 的类型来自模块增强，运行时服务由宿主插件树提供，无需副作用导入）或同样移入 dependencies。发布/安装前用目标安装方式实测一次插件树加载。 |
 | S2 | src/collapse.ts:30、101-104、139-165 | **plan.provenance 是死代码，且其缺失守卫会无谓跳过折叠**。planCollapses 在 :101-104 读取被清 assistant 消息 source 的 provider/model，缺失即 `continue`；但 applyCollapse 从不使用 plan.provenance，compaction/prune 事件类型也没有 provider/model 字段。该守卫只增加了一个无收益的失败模式（若历史 assistant 消息缺 provenance，折叠被静默跳过）。 | 删除 provenance 字段与 :101-104 守卫（plan.stats/shadowedTokenCount 均不受影响）；或若本意是给 tombstone source 携带出处，则真正用起来并补测试。 |
 | S3 | src/commit.ts:218-227 | **catch 注释与实际失败分支不符**。注释称「the surface was not replaced (the only mutating append is the checkpoint)」，但若错误发生在 compaction/end 追加（checkpoint replace 已成功），surface 已被替换且落下带 error 的闭合括号——语义上这是一次「已替换但标记为失败」的矛盾记录。引擎对同场景以 stage 区分（dsh-compaction-basic/lib/index.js:444-477：closing 前失败才补 error end，closing 后失败只记录不补）。 | 比照引擎引入 stage：仅在 checkpoint append 之前失败时补 `compaction/end {error}`；replace 已落地后的 end 失败按引擎语义处理。至少先修正注释，不再声称「surface 未被替换」。 |
 | S4 | test/commit.test.ts | **fail-closed 错误路径零覆盖**。compaction/end {error} 的 best-effort 收尾是「括号不闭合即会话永久无法加载」的唯一防线（AGENTS.md 契约 4），但没有任何测试触发过 catch 分支。 | 补一个注入式失败测试：包装 session.append 使第 N 次调用抛错（分别覆盖 summary 阶段与 end 阶段），断言恰好一个 `compaction/end {error}`、括号闭合、原错误向上抛出。 |

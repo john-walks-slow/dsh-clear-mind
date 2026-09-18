@@ -21,7 +21,7 @@ import type { MeterPort } from "./scan.js";
 import { tryAgentRoute } from "./route.js";
 import type { ClearMindConfig } from "./config.js";
 import type { PlaybookPrompts } from "./prompts.js";
-import { playbookFor } from "./prompts.js";
+import { DEFAULT_PLAYBOOK } from "./prompts.js";
 
 /** Port for resolving the routed model's context window. */
 export interface ModelInfoPort {
@@ -59,7 +59,7 @@ function renderReminderText(trigger: ReminderTrigger, prompts: PlaybookPrompts):
 }
 
 /** Build the UserMessage for a fired reminder. */
-export function buildReminderMessage(trigger: ReminderTrigger, prompts: PlaybookPrompts = playbookFor("engineering")): UserMessage {
+export function buildReminderMessage(trigger: ReminderTrigger, prompts: PlaybookPrompts = DEFAULT_PLAYBOOK): UserMessage {
 	return createUserMessage({
 		content: [{ type: "text", text: renderReminderText(trigger, prompts) }],
 		source: {

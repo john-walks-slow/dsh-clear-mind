@@ -75,8 +75,8 @@ the checkpoint now stands for the cleared span. Reorient briefly (goal, constrai
     minNotesChars: 200          # 检查点 notes 最短长度
     maxNotesChars: 16000        # 检查点 notes 最长长度
     selfCollapse: true          # 自动折叠 clear_mind / mind_map 调用对
-    playbookStyle: engineering  # 提示词风格：engineering（工程化）| natural（口语化）
-    presetPlaybookStyle: {}     # 按 agent preset 覆盖风格，如 { roleplay: natural, agent: natural }
+    playbook: {}                # 提示词逐段自定义覆盖（全局），空白/缺省段保留内置文案
+    presetPlaybook: {}          # 按 agent preset id 覆盖，如 { roleplay: { ... } }
     reminderEnabled: true       # 主动提醒开关
     reminderThresholdRatio: 0.70   # 上下文占模型窗口比例阈值（0.01~1）
     reminderThresholdTokens: 0     # 绝对 token 阈值（0 = 仅按比例）
@@ -86,7 +86,19 @@ the checkpoint now stands for the cleared span. Reorient briefly (goal, constrai
 
 Web 前端可在设置页直接编辑以上全部参数（命名空间 `clear-mind`），保存即热生效，无需重启；headless profile 无设置服务时自动降级为仅配置文件生效。提醒触发还要求 token 数较上次提醒有增长——静止的会话不会重复打扰。
 
-**提示词风格（按 preset 区分）**：`playbookStyle` 设定默认风格；`presetPlaybookStyle` 可按 session 的 agent preset 覆盖（如 `roleplay: natural`）。`natural` 风格把 mind_map 返回的清理指引、工具描述里的「何时梳理」信号、以及主动提醒文案都换成口语化表述——没有 `##` 模板样例和工程黑话，适合 roleplay / 陪伴类 preset；地图本身的协议语义（seq、边界标记）不受影响。风格在 agent 注册时按 session header 里持久的 `agentPreset` 解析，改动对之后创建的会话生效。
+**提示词自定义覆盖（按 preset 区分）**：不设预制风格，8 个提示词段位全部开放为自由文本覆盖——`title`（playbook 标题）、`rangeGuide`（怎么选区间）、`notesGuide`（notes 要写什么，多行按 `\n` 分行）、`selfCheck`（提交前自检）、`callHint`（多段清理提示）、`signals`（mind_map 描述里的「何时梳理」信号段）、`reminderHead` / `reminder`（主动提醒文案）。`playbook` 为全局覆盖；`presetPlaybook` 按 session 的 agent preset id 覆盖（如 `roleplay: { ... }`），逐段合并优先级 preset > 全局 > 内置；空白或缺省段保留内置文案，所以可以只改想要改的段。示例：
+
+```yaml
+presetPlaybook:
+  roleplay:
+    title: "— 清理指引 —"
+    rangeGuide: "把已经告一段落的旧阶段或走完的弯路从上下文里请出去，最近还在进行中的对话保持原样。以前清理留下的要点（◆）要并进这次的笔记。清掉之后未来的你只能靠这份笔记回忆这段时间，宁可多记一点。"
+    notesGuide: "笔记大致讲清楚：一开始想做成什么（用户的关键原话值得记下来）、现在知道了什么（路径数字约定原样保留）、哪些路走不通别再试、还有什么没做完、接下来做什么。"
+    selfCheck: "收尾前扫一眼：没做完的事都记了吗？后面还要用的路径、数字、约定都在吗？用户交代过的「不要做 X」还在吗？有长期价值的东西先存进文件或记忆。"
+    callHint: "想清理的部分分好几段时，在同一条消息里多调几次 clear_mind，各段不重叠即可。"
+```
+
+覆盖在 agent 注册时按 session header 里持久的 `agentPreset` 解析，改动对之后创建的会话生效；地图本身的协议语义（seq、边界标记）不随覆盖变化。
 
 ## 安装
 

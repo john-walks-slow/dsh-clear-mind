@@ -14,7 +14,7 @@
  */
 
 import type { Survey, SurveyNode } from "./scan.js";
-import { playbookFor } from "./prompts.js";
+import { DEFAULT_PLAYBOOK } from "./prompts.js";
 import type { PlaybookPrompts } from "./prompts.js";
 
 const RENDER_NODE_LIMIT = 140;
@@ -40,7 +40,7 @@ function turnLine(turn: { turn: number; startSeq: number; endSeq: number; nodes:
 }
 
 /** Render the survey as the mind_map tool's model-facing content. */
-export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = playbookFor("engineering")): string {
+export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = DEFAULT_PLAYBOOK): string {
 	const lines: string[] = [];
 	lines.push(
 		"Mind surface: " + survey.surfaceNodes + " nodes, ~" + formatTokens(survey.surfaceTokens) +
@@ -97,7 +97,8 @@ export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = playbook
 	// Folded here (instead of a separate skill the model must read first) so
 	// the guidance appears exactly when the map is consulted and self-erases
 	// with it at the next step boundary. Only shown when a clear is actionable.
-	// The text set (engineering vs natural) is chosen per session preset.
+	// The text set is the built-in default with the operator's playbook
+	// overrides applied.
 	if (survey.latestEndSeq !== undefined) {
 		lines.push("");
 		lines.push(prompts.title);

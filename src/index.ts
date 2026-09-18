@@ -58,12 +58,11 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 	// platform's automatic compaction only — their context is short-lived by
 	// design and scoped delegation should not rewrite its own history.
 	//
-	// The prompt tone is resolved per agent from the session's durable
-	// `agentPreset` header (presetPlaybookStyle override → playbookStyle
-	// default), so e.g. a roleplay preset can run the natural register while
-	// engineering sessions keep the original text. A preset is durable per
-	// session, so the resolved tone is captured at registration time; config
-	// edits reach sessions created afterwards.
+	// The prompt wording is resolved once per agent registration from the
+	// operator's overrides — `presetPlaybook[agentPreset]` first, then the
+	// global `playbook`, then the built-in text. A preset is durable per
+	// session, so the resolved wording is captured at registration time;
+	// config edits reach sessions created afterwards.
 	const registered = new WeakSet<Agent>();
 	const registerOne = (agent: Agent) => {
 		if (registered.has(agent)) return;

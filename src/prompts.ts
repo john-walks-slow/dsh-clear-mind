@@ -1,18 +1,20 @@
 /**
- * The clear-mind prompt texts, in two curated tones.
+ * The clear-mind prompt texts.
  *
- * "engineering" is the original dense operator register (seq discipline,
- * verbatim preservation, a ## notes template). "natural" says the same things
- * conversationally — no template headings, no jargon — for presets like
- * roleplay where the engineering register breaks the fiction.
+ * DEFAULT_PLAYBOOK is the built-in wording (the original dense operator
+ * register). Every segment can be replaced by the operator through the
+ * `playbook` (global) and `presetPlaybook` (per agent preset id) config
+ * maps — blank or absent fields keep the built-in text, so a preset can
+ * override just one segment (say, drop the ## notes template) without
+ * rewriting the rest.
  *
- * Which set a session sees is resolved once per agent registration from the
- * session's durable `agentPreset` header + the style config, so a preset's
- * tone is stable for the session's lifetime while staying configurable from
- * the settings page for sessions created later.
+ * Which override applies is resolved once per agent registration from the
+ * session's durable `agentPreset` header, so a preset's wording is stable
+ * for the session's lifetime while staying configurable for sessions
+ * created later.
  */
 
-import type { ClearMindConfig, PlaybookStyle } from "./config.js";
+import type { ClearMindConfig, PlaybookOverride, PlaybookOverrideKey } from "./config.js";
 
 /** One complete prompt text set: the playbook the map returns and the nudge text. */
 export interface PlaybookPrompts {
@@ -34,7 +36,7 @@ export interface PlaybookPrompts {
 	readonly reminder: readonly string[];
 }
 
-const ENGINEERING: PlaybookPrompts = {
+export const DEFAULT_PLAYBOOK: PlaybookPrompts = {
 	title: "— clear-mind playbook —",
 	rangeGuide: "选区间：清「已完成的旧阶段」或「可收敛支线/弯路」；至少保留最近 1-2 个回合原文（进行中的工作需 verbatim）；区间内的旧检查点 ◆ 必须吸收进新 notes。区间清理后，未来的你将只能看到 notes。请确保 notes中记录了该区间内对未来可能有用的全部信息，宁滥勿缺。",
 	notesGuide: [
@@ -55,35 +57,43 @@ const ENGINEERING: PlaybookPrompts = {
 	]
 };
 
-const NATURAL: PlaybookPrompts = {
-	title: "— 清理指引 —",
-	rangeGuide: "可以把已经告一段落的旧阶段、或者已经走完的弯路从上下文里请出去，最近一两个回合还在进行中的对话保持原样就好。如果这段区间里有过以前的清理笔记（◆ 标记），把里面的要点并进这次的笔记。清理之后，未来的你只能靠这份笔记回忆这段时间——所以宁可多记一点，也别弄丢将来可能用到的信息。",
-	notesGuide: [
-		"笔记大致讲清楚这几件事：一开始想做成什么（用户的关键原话值得记下来）、现在已经知道了什么（路径、数字、约定这些细节原样保留）、哪些路走不通别再试、还有什么没做完、接下来打算做什么。"
-	],
-	selfCheck: "收尾前扫一眼：没做完的事都记了吗？后面还要用的路径、数字、约定都在吗？用户交代过的「不要做 X」之类的要求还在吗？有长期价值的东西先存进文件或记忆里，这份笔记只负责这次对话。",
-	callHint: "如果想清理的部分分好几段，就在同一条消息里多调几次 clear_mind，各段不重叠即可。",
-	signals: "这些时刻值得停下来梳理一下：同一个问题反复尝试没有进展、准备换思路；一段探索或调研告一段落；用户换了新方向、旧的工作可以收尾；你发现自己在往回翻聊天记录找回状态；一个子任务做完要开下一个；或者对话变长、开始显得臃肿——与其等系统自动压缩（它只会留下最近的尾巴），不如趁早自己把有价值的东西记成笔记。对话刚开头、或手头的工具结果还没消化完的时候，先别急着清。",
-	reminderHead: "上下文维护提醒：这场对话已经积累了不少——",
-	reminder: [
-		"- 有空时先调用 mind_map 看看全貌，把告一段落的部分整理成笔记、用 clear_mind 清掉。",
-		"- 正在做的事不受影响；如果手头这一步还没做完，先做完再整理也没关系。"
-	]
-};
+/** A blank or whitespace-only override never replaces the built-in text. */
+function firstNonEmpty(values: readonly (string | undefined)[]): string | undefined {
+	for (const value of values) {
+		if (typeof value === "string" && value.trim() !== "") return value;
+	}
+	return undefined;
+}
 
-/** The curated text set for a style. */
-export function playbookFor(style: PlaybookStyle): PlaybookPrompts {
-	return style === "natural" ? NATURAL : ENGINEERING;
+function multiline(text: string): string[] {
+	return text.split("\n");
 }
 
 /**
- * Resolve the prompt set for a session: the preset's override wins, then the
- * global default. An unknown preset id falls back to the global default.
+ * Resolve the prompt set for a session: the preset's override wins field by
+ * field, then the global override, then the built-in text. An unknown preset
+ * id simply has no override of its own.
  */
 export function resolvePlaybook(
-	config: Pick<ClearMindConfig, "playbookStyle" | "presetPlaybookStyle">,
+	config: Pick<ClearMindConfig, "playbook" | "presetPlaybook">,
 	presetId: string | undefined
 ): PlaybookPrompts {
-	const style = (presetId !== undefined ? config.presetPlaybookStyle[presetId] : undefined) ?? config.playbookStyle;
-	return playbookFor(style);
+	const preset: PlaybookOverride = presetId !== undefined ? config.presetPlaybook[presetId] ?? {} : {};
+	const global: PlaybookOverride = config.playbook;
+	const pick = (key: Exclude<PlaybookOverrideKey, "notesGuide" | "reminder">): string =>
+		firstNonEmpty([preset[key], global[key]]) ?? DEFAULT_PLAYBOOK[key];
+	const pickLines = (key: "notesGuide" | "reminder"): readonly string[] => {
+		const override = firstNonEmpty([preset[key], global[key]]);
+		return override !== undefined ? multiline(override) : DEFAULT_PLAYBOOK[key];
+	};
+	return {
+		title: pick("title"),
+		rangeGuide: pick("rangeGuide"),
+		notesGuide: pickLines("notesGuide"),
+		selfCheck: pick("selfCheck"),
+		callHint: pick("callHint"),
+		signals: pick("signals"),
+		reminderHead: pick("reminderHead"),
+		reminder: pickLines("reminder")
+	};
 }

@@ -77,8 +77,8 @@ At the next step boundary the call and its result fold into a one-line tombstone
     minNotesChars: 200          # checkpoint notes minimum length
     maxNotesChars: 16000        # checkpoint notes maximum length
     selfCollapse: true          # auto-fold clear_mind / mind_map call+result pairs
-    playbookStyle: engineering  # prompt tone: engineering | natural (conversational)
-    presetPlaybookStyle: {}     # per agent-preset overrides, e.g. { roleplay: natural }
+    playbook: {}                # per-segment free-text prompt overrides (global); blank/absent keeps built-in
+    presetPlaybook: {}          # per agent-preset overrides, e.g. { roleplay: { ... } }
     reminderEnabled: true       # proactive reminder toggle
     reminderThresholdRatio: 0.70   # context-to-window ratio threshold (0.01~1)
     reminderThresholdTokens: 0     # absolute token threshold (0 = ratio only)
@@ -88,7 +88,7 @@ At the next step boundary the call and its result fold into a one-line tombstone
 
 The web frontend exposes every knob on its settings page (namespace `clear-mind`); saving hot-applies without a restart. On headless profiles without a settings service the plugin degrades gracefully to config-file-only. A reminder also requires the token count to have grown since the last one — a steady conversation is never nagged twice.
 
-**Prompt tone per agent preset**: `playbookStyle` sets the default tone and `presetPlaybookStyle` overrides it per session preset (e.g. `roleplay: natural`). The `natural` tone rewrites the clear-mind playbook returned by mind_map, the "when to survey" signals in the tool description, and the proactive reminder text conversationally — no `##` template headings, no operator jargon — for presets like roleplay; the map's protocol semantics (seqs, boundary markers) are untouched. The tone is resolved per agent from the session's durable `agentPreset` header at registration; config edits reach sessions created afterwards.
+**Custom prompt overrides per agent preset**: there are no prefab styles — all 8 prompt segments are open as free-text overrides: `title` (playbook header), `rangeGuide` (choosing the range), `notesGuide` (what the notes contain, one output line per `\n`), `selfCheck`, `callHint`, `signals` (the "when to survey" paragraph in the mind_map description), and `reminderHead` / `reminder` (proactive reminder text). `playbook` overrides globally; `presetPlaybook` overrides per session preset id (e.g. `roleplay: { ... }`), merged field by field with preset > global > built-in precedence; blank or absent fields keep the built-in wording, so an override can touch only the segments worth changing. Overrides are resolved per agent from the session's durable `agentPreset` header at registration; config edits reach sessions created afterwards, and the map's protocol semantics (seqs, boundary markers) never change.
 
 ## Install
 

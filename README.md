@@ -98,7 +98,7 @@ presetPlaybook:
     callHint: "想清理的部分分好几段时，在同一条消息里多调几次 clear_mind，各段不重叠即可。"
 ```
 
-覆盖在 agent 注册时按 session header 里持久的 `agentPreset` 解析，改动对之后创建的会话生效；地图本身的协议语义（seq、边界标记）不随覆盖变化。
+覆盖在 agent 注册时按 session header 里持久的 `agentPreset` 解析，改动对之后创建的会话生效；preset id 就是 `~/.dsh/.agent-presets/` 下的目录名（GUI 预设列表里显示的 id）。设置页（命名空间 `clear-mind`）同样可以编辑这两项。地图本身的协议语义（seq、边界标记）不随覆盖变化。
 
 ## 安装
 

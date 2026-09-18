@@ -75,6 +75,8 @@ the checkpoint now stands for the cleared span. Reorient briefly (goal, constrai
     minNotesChars: 200          # 检查点 notes 最短长度
     maxNotesChars: 16000        # 检查点 notes 最长长度
     selfCollapse: true          # 自动折叠 clear_mind / mind_map 调用对
+    playbookStyle: engineering  # 提示词风格：engineering（工程化）| natural（口语化）
+    presetPlaybookStyle: {}     # 按 agent preset 覆盖风格，如 { roleplay: natural, agent: natural }
     reminderEnabled: true       # 主动提醒开关
     reminderThresholdRatio: 0.70   # 上下文占模型窗口比例阈值（0.01~1）
     reminderThresholdTokens: 0     # 绝对 token 阈值（0 = 仅按比例）
@@ -83,6 +85,8 @@ the checkpoint now stands for the cleared span. Reorient briefly (goal, constrai
 ```
 
 Web 前端可在设置页直接编辑以上全部参数（命名空间 `clear-mind`），保存即热生效，无需重启；headless profile 无设置服务时自动降级为仅配置文件生效。提醒触发还要求 token 数较上次提醒有增长——静止的会话不会重复打扰。
+
+**提示词风格（按 preset 区分）**：`playbookStyle` 设定默认风格；`presetPlaybookStyle` 可按 session 的 agent preset 覆盖（如 `roleplay: natural`）。`natural` 风格把 mind_map 返回的清理指引、工具描述里的「何时梳理」信号、以及主动提醒文案都换成口语化表述——没有 `##` 模板样例和工程黑话，适合 roleplay / 陪伴类 preset；地图本身的协议语义（seq、边界标记）不受影响。风格在 agent 注册时按 session header 里持久的 `agentPreset` 解析，改动对之后创建的会话生效。
 
 ## 安装
 

@@ -20,6 +20,8 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { MeterPort } from "./scan.js";
 import { tryAgentRoute } from "./route.js";
 import type { ClearMindConfig } from "./config.js";
+import type { PlaybookPrompts } from "./prompts.js";
+import { playbookFor } from "./prompts.js";
 
 /** Port for resolving the routed model's context window. */
 export interface ModelInfoPort {
@@ -45,22 +47,21 @@ export interface ReminderTrigger {
 const PLUGIN_NAME = "dsh-clear-mind";
 
 /** Build the `<system-reminder>` text the model sees. */
-function renderReminderText(trigger: ReminderTrigger): string {
+function renderReminderText(trigger: ReminderTrigger, prompts: PlaybookPrompts): string {
 	const lines: string[] = [
 		"<system-reminder>",
-		"[Context / Step Alert] 当前会话已达到主动清理检查点：",
+		prompts.reminderHead,
 		"- 原因：" + trigger.reasons.join("；"),
-		"- 建议：长上下文或单轮过多 Step 容易累积过时试错过程与冗余工具输出，分散注意力并增加推理成本。",
-		"- 行动指引：先调用 mind_map 审视当前上下文表面，然后将已完成阶段/可收敛支线通过 clear_mind 压缩为检查点，剔除噪音留下有用信息。若手头工作尚未完成，先把这一阶段的工作做完再清理即可。",
+		...prompts.reminder,
 		"</system-reminder>"
 	];
 	return lines.join("\n");
 }
 
 /** Build the UserMessage for a fired reminder. */
-export function buildReminderMessage(trigger: ReminderTrigger): UserMessage {
+export function buildReminderMessage(trigger: ReminderTrigger, prompts: PlaybookPrompts = playbookFor("engineering")): UserMessage {
 	return createUserMessage({
-		content: [{ type: "text", text: renderReminderText(trigger) }],
+		content: [{ type: "text", text: renderReminderText(trigger, prompts) }],
 		source: {
 			kind: "plugin",
 			plugin: PLUGIN_NAME,

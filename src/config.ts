@@ -10,11 +10,16 @@
 
 import z from "@deepseek-ai/schemastery";
 
+/** Tone of the clear-mind prompts the model sees (playbook, signals, reminder). */
+export type PlaybookStyle = "engineering" | "natural";
+
 export const Config = z.object({
 	minClearTokens: z.number().step(1).min(1).default(1000),
 	minNotesChars: z.number().step(1).min(1).default(200),
 	maxNotesChars: z.number().step(1).min(1).default(16000),
 	selfCollapse: z.boolean().default(true),
+	playbookStyle: z.union(["engineering", "natural"]).default("engineering"),
+	presetPlaybookStyle: z.dict(z.union(["engineering", "natural"])).default({}),
 	reminderEnabled: z.boolean().default(true),
 	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70),
 	reminderThresholdTokens: z.number().step(1).min(0).default(0),
@@ -27,6 +32,8 @@ export interface ClearMindConfig {
 	readonly minNotesChars: number;
 	readonly maxNotesChars: number;
 	readonly selfCollapse: boolean;
+	readonly playbookStyle: PlaybookStyle;
+	readonly presetPlaybookStyle: Readonly<Record<string, PlaybookStyle>>;
 	readonly reminderEnabled: boolean;
 	readonly reminderThresholdRatio: number;
 	readonly reminderThresholdTokens: number;
@@ -54,11 +61,24 @@ export function resolveConfig(raw: Partial<ClearMindConfig> | Record<string, unk
 	const minNotesChars = positive(value.minNotesChars, 200);
 	const maxNotesChars = positive(value.maxNotesChars, 16000);
 	if (minNotesChars >= maxNotesChars) throw new Error("dsh-clear-mind config: minNotesChars must be less than maxNotesChars");
+	const style = (input: unknown, field: string): PlaybookStyle => {
+		if (input === "engineering" || input === "natural") return input;
+		throw new Error('dsh-clear-mind config: ' + field + ' must be "engineering" or "natural"');
+	};
+	const presetStyles: Record<string, PlaybookStyle> = {};
+	const rawPresets = value.presetPlaybookStyle;
+	if (rawPresets !== undefined && typeof rawPresets === "object" && rawPresets !== null && !Array.isArray(rawPresets)) {
+		for (const [preset, styleValue] of Object.entries(rawPresets)) {
+			presetStyles[preset] = style(styleValue, 'presetPlaybookStyle["' + preset + '"]');
+		}
+	}
 	return {
 		minClearTokens: positive(value.minClearTokens, 1000),
 		minNotesChars,
 		maxNotesChars,
 		selfCollapse: typeof value.selfCollapse === "boolean" ? value.selfCollapse : true,
+		playbookStyle: style(value.playbookStyle ?? "engineering", "playbookStyle"),
+		presetPlaybookStyle: presetStyles,
 		reminderEnabled: typeof value.reminderEnabled === "boolean" ? value.reminderEnabled : true,
 		reminderThresholdRatio: ratio,
 		reminderThresholdTokens: nonNegative(value.reminderThresholdTokens, 0),

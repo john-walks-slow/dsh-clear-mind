@@ -30,6 +30,7 @@ import { mindMapTool, clearMindTool } from "./tools.js";
 import { collapseClearMindRuns } from "./collapse.js";
 import { evaluateReminder, buildReminderMessage } from "./reminder.js";
 import type { AgentReminderState, ModelInfoPort } from "./reminder.js";
+import { resolvePlaybook } from "./prompts.js";
 
 export const name = "dsh-clear-mind";
 export const inject = ["tools", "tokenMeter", "agents", "llm"];
@@ -56,12 +57,20 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 	// Register both tools on every root agent exactly once. Subagents keep the
 	// platform's automatic compaction only — their context is short-lived by
 	// design and scoped delegation should not rewrite its own history.
+	//
+	// The prompt tone is resolved per agent from the session's durable
+	// `agentPreset` header (presetPlaybookStyle override → playbookStyle
+	// default), so e.g. a roleplay preset can run the natural register while
+	// engineering sessions keep the original text. A preset is durable per
+	// session, so the resolved tone is captured at registration time; config
+	// edits reach sessions created afterwards.
 	const registered = new WeakSet<Agent>();
 	const registerOne = (agent: Agent) => {
 		if (registered.has(agent)) return;
 		if (!ctx.agents.roots().includes(agent)) return;
 		registered.add(agent);
-		agent.ctx.tools.register(mindMapTool(meter));
+		const prompts = resolvePlaybook(resolved, agent.session.header.agentPreset);
+		agent.ctx.tools.register(mindMapTool(meter, prompts));
 		agent.ctx.tools.register(clearMindTool(meter, resolved));
 	};
 	ctx.on("agent/created", ({ agent }: { agent: Agent }) => {
@@ -126,7 +135,8 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 				payload.turn, payload.step, payload.signal, reminderStates
 			);
 			if (trigger !== null) {
-				return { ...decision, messages: [...decision.messages, buildReminderMessage(trigger)] };
+				const prompts = resolvePlaybook(resolved, payload.agent.session.header.agentPreset);
+				return { ...decision, messages: [...decision.messages, buildReminderMessage(trigger, prompts)] };
 			}
 		} catch (error) {
 			ctx.logger.warn("dsh-clear-mind: reminder evaluation skipped (" + (error instanceof Error ? error.message : String(error)) + ")");

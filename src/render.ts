@@ -14,6 +14,8 @@
  */
 
 import type { Survey, SurveyNode } from "./scan.js";
+import { playbookFor } from "./prompts.js";
+import type { PlaybookPrompts } from "./prompts.js";
 
 const RENDER_NODE_LIMIT = 140;
 
@@ -38,7 +40,7 @@ function turnLine(turn: { turn: number; startSeq: number; endSeq: number; nodes:
 }
 
 /** Render the survey as the mind_map tool's model-facing content. */
-export function renderSurvey(survey: Survey): string {
+export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = playbookFor("engineering")): string {
 	const lines: string[] = [];
 	lines.push(
 		"Mind surface: " + survey.surfaceNodes + " nodes, ~" + formatTokens(survey.surfaceTokens) +
@@ -95,18 +97,14 @@ export function renderSurvey(survey: Survey): string {
 	// Folded here (instead of a separate skill the model must read first) so
 	// the guidance appears exactly when the map is consulted and self-erases
 	// with it at the next step boundary. Only shown when a clear is actionable.
+	// The text set (engineering vs natural) is chosen per session preset.
 	if (survey.latestEndSeq !== undefined) {
 		lines.push("");
-		lines.push("— clear-mind playbook —");
-		lines.push("选区间：清「已完成的旧阶段」或「可收敛支线/弯路」；至少保留最近 1-2 个回合原文（进行中的工作需 verbatim）；区间内的旧检查点 ◆ 必须吸收进新 notes。区间清理后，未来的你将只能看到 notes。请确保 notes中记录了该区间内对未来可能有用的全部信息，宁滥勿缺。");
-		lines.push("notes 参考模板：");
-		lines.push("  ## 任务与用户意图（关键处引用原话）");
-		lines.push("  ## 关键事实与决策（文件路径、命令、版本号、id、数据——逐字保留）");
-		lines.push("  ## 已放弃的路径（什么失败了、为什么、别再试）");
-		lines.push("  ## 未决事项");
-		lines.push("  ## 下一步（引用用户最近的指令）");
-		lines.push("提交前自检（防丢）：每个未完成要求都在？后续要用的路径/标识符/数字都逐字在？用户说过的「不要做 X」类约束都在？有耐久价值的情报先外化到 todo/记忆/文件——检查点只服务本次会话。");
-		lines.push("调用：要清多段时，可在同一条消息连发多次 clear_mind，各段互不重叠即可。");
+		lines.push(prompts.title);
+		lines.push(prompts.rangeGuide);
+		for (const line of prompts.notesGuide) lines.push(line);
+		lines.push(prompts.selfCheck);
+		lines.push(prompts.callHint);
 	}
 	return lines.join("\n");
 }

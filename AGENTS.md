@@ -6,14 +6,15 @@
 
 ## 地图
 
-- `src/config.ts` — schemastery Config + resolveConfig（minClearTokens/minNotesChars/maxNotesChars/selfCollapse/reminder*）
+- `src/config.ts` — schemastery Config + resolveConfig（minClearTokens/minNotesChars/maxNotesChars/selfCollapse/playbookStyle/presetPlaybookStyle/reminder*）；PlaybookStyle = "engineering" | "natural"
+- `src/prompts.ts` — 提示词文案层：PlaybookPrompts（title/rangeGuide/notesGuide/selfCheck/callHint/signals/reminderHead/reminder）+ ENGINEERING/NATURAL 两套常量 + resolvePlaybook(config, presetId)。改提示词文案只动这里；engineering 集合的文本有逐字回归测试
 - `src/scan.ts` — scanSurface：事件日志 → Survey（节点/边界标记/turn 归属/latestEndSeq）；MeterPort 端口类型
-- `src/render.ts` — renderSurvey：模型面对的地图文本；RENDER_NODE_LIMIT=140 超限按 turn 聚合；可清理时末尾附 clear-mind playbook（区间选择/notes 模板/提交前自检，字符串内引号用「」避免转义）
+- `src/render.ts` — renderSurvey：模型面对的地图文本；RENDER_NODE_LIMIT=140 超限按 turn 聚合；可清理时末尾附 playbook（由传入的 PlaybookPrompts 驱动，默认 engineering；字符串内引号用「」避免转义）
 - `src/commit.ts` — commitClearMind 全事务 + frameCheckpointMessage（<compacted-summary> + compactCheckpointSource）
 - `src/collapse.ts` — planCollapses 无状态检测 + applyCollapse（prune + user/message notice tombstone）
-- `src/tools.ts` — defineTool 两工具；mind_map description 含「何时清理」信号、返回带 playbook；presentationMeta 携带 collapse 统计；route 解析（session.requestHeader → agent.options）
-- `src/index.ts` — cordis apply：inject/MeterPort/roots+agent/created 注册/agent-pre-step 自折叠（无技能注册）
-- `test/` — 真实 Session 脚本化构造器 + assertShadowPriceProtocol 全日志断言
+- `src/tools.ts` — defineTool 两工具；mind_map description 的「何时清理」信号段取 prompts.signals、返回带 playbook；presentationMeta 携带 collapse 统计；route 解析（session.requestHeader → agent.options）
+- `src/index.ts` — cordis apply：inject/MeterPort/roots+agent/created 注册（per-agent 用 session.header.agentPreset 解析提示词风格）/agent-pre-step 自折叠+reminder（reminder 按 preset 现场解析风格）
+- `test/` — 真实 Session 脚本化构造器 + assertShadowPriceProtocol 全日志断言；prompts.test.ts 覆盖风格解析与两套文案回归
 
 ## 开发
 

@@ -8,9 +8,9 @@
 
 - `src/config.ts` — schemastery Config + resolveConfig（minClearTokens/minNotesChars/maxNotesChars/selfCollapse/playbook/presetPlaybook/reminder*）；PlaybookOverride = 8 个提示词段位的自由文本覆盖，逐段合并 preset > 全局 > 内置，空白段=保留内置
 - `src/prompts.ts` — 提示词文案层：PlaybookPrompts（title/rangeGuide/notesGuide/selfCheck/callHint/signals/reminderHead/reminder）+ DEFAULT_PLAYBOOK 内置文案 + resolvePlaybook(config, presetId)。改内置文案只动这里；内置文案有逐字回归测试
-- `src/scan.ts` — scanSurface：事件日志 → Survey（节点/边界标记/turn 归属/latestEndSeq）；MeterPort 端口类型
+- `src/scan.ts` — scanSurface：事件日志 → Survey（节点/边界标记/turn 归属/latestEndSeq）；system head 识别（isSystemHead）；MeterPort 端口类型
 - `src/render.ts` — renderSurvey：模型面对的地图文本；RENDER_NODE_LIMIT=140 超限按 turn 聚合；可清理时末尾附 playbook（由传入的 PlaybookPrompts 驱动，默认内置；字符串内引号用「」避免转义）
-- `src/commit.ts` — commitClearMind 全事务 + frameCheckpointMessage（<compacted-summary> + compactCheckpointSource）
+- `src/commit.ts` — commitClearMind 全事务 + frameCheckpointMessage（<compacted-summary> + compactCheckpointSource）；"first" 端点解析为首个 validStart 节点（跳过 system head）
 - `src/collapse.ts` — planCollapses 无状态检测 + applyCollapse（prune + user/message notice tombstone）
 - `src/tools.ts` — defineTool 两工具；mind_map description 的「何时清理」信号段取 prompts.signals、返回带 playbook；presentationMeta 携带 collapse 统计；route 解析（session.requestHeader → agent.options）
 - `src/index.ts` — cordis apply：inject/MeterPort/roots+agent/created 注册（per-agent 用 session.header.agentPreset 解析提示词覆盖）/agent-pre-step 自折叠+reminder（reminder 触发时现场解析）
@@ -33,6 +33,7 @@
 
 ## Pitfalls（本项目实测）
 
+- surface node 0 若为 system/message 即系统提示词，平台 assertSystemHeadRewrite 只允许 system/message 精确重写该节点——clear 区间永远不得覆盖它；scan 置 validStart=false、commit 把 "first" 解析为首个 validStart 节点（commit 6ebe6b8）。真实 agent 会话的 head 多为 system/message，而测试 fixture 曾从不构造 system head，导致旧 bug 测试全绿线上必炸——涉及 surface 边界的测试必须含 system head 变体
 - SurfaceOp 字段名演进：由旧版 start/end 改为 startSeq/endSeq；本地 node_modules 需同步平台最新 .d.ts，断言避免用 any/可选类型掩盖属性变更
 - read 工具 limit 截断回写曾把 package.json 写坏——改长文件读全或用 edit
 - python yaml 往返会把 YAML1.1 的 off/on 键损坏成 false/true——settings 切片用文本方式

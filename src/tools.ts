@@ -69,7 +69,7 @@ export function mindMapTool(meter: MeterPort, prompts: PlaybookPrompts) {
 							properties: {
 								seq: { type: "integer", required: true },
 								turn: { oneOf: [{ type: "integer" }, { type: "null" }], required: true },
-								kind: { type: "string", enum: ["user", "assistant", "tool"], required: true },
+								kind: { type: "string", enum: ["user", "assistant", "tool", "system"], required: true },
 								tokens: { type: "integer", required: true },
 								preview: { type: "string", required: true },
 								validStart: { type: "boolean", required: true },
@@ -104,7 +104,7 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 			start: {
 				oneOf: [{ type: "integer" }, { type: "string" }],
 				required: true,
-				description: "Range start: an integer surface seq from mind_map (e.g. 123), or 'first'."
+				description: "Range start: an integer surface seq from mind_map (e.g. 123), or 'first' (the earliest clearable node — the system prompt never clears)."
 			},
 			end: {
 				oneOf: [{ type: "integer" }, { type: "string" }],

@@ -32,8 +32,8 @@ export interface SurveyNode {
 	readonly seq: number;
 	/** Owning turn from the log walk; null before any turn/start. */
 	readonly turn: number | null;
-	/** user / assistant / tool (tool = tool-result message). */
-	readonly kind: "user" | "assistant" | "tool";
+	/** user / assistant / tool (tool = tool-result message) / system (system-prompt node). */
+	readonly kind: "user" | "assistant" | "tool" | "system";
 	/** Fixed-heuristic token price of the derived message. */
 	readonly tokens: number;
 	/** One-line preview of the content (bounded). */
@@ -253,6 +253,20 @@ function isCheckpointSource(message: Message): boolean {
 }
 
 /**
+ * Whether surface node 0 is the platform-protected system prompt head.
+ *
+ * The engine's assertSystemHeadRewrite (dsh-session surface.js) only admits a
+ * `system/message` replacement over exactly that node; a clear_mind range may
+ * never cover it, so the survey's validStart and the commit's boundary flags
+ * and "first" resolution all treat it as an untouchable prefix.
+ */
+export function isSystemHead(session: Session, surface: readonly number[]): boolean {
+	if (surface.length === 0) return false;
+	const head = session.eventAt(SessionSeq(surface[0]));
+	return head?.type === "system/message";
+}
+
+/**
  * Scan one session's surface into a Survey.
  * @param session - live session to survey.
  * @param meter - token meter port (per-node heuristic prices, request pressure).
@@ -284,19 +298,28 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 	for (const node of measurement.nodes) heuristicBySeq.set(node.seq, node.heuristicTokens);
 	const nodes: SurveyNode[] = [];
 	const surfaceNodes = session.surface.nodes as readonly number[];
-	for (const seq of surfaceNodes) {
+	const systemHead = isSystemHead(session, surfaceNodes);
+	for (const [position, seq] of surfaceNodes.entries()) {
 		const event = session.eventAt(SessionSeq(seq));
 		if (event === undefined || !isSurfaceEvent(event)) continue;
 		const message = deriveEventMessage(event);
 		const tokens = message === null ? 0 : (heuristicBySeq.get(seq) ?? meter.estimateMessage(message));
-		const shape = message === null ? { preview: "(empty)", kind: "assistant" as const } : previewOfMessage(message, toolNames, display);
+		const shape: { preview: string; kind: SurveyNode["kind"]; toolName?: string; isError?: boolean } =
+			event.type === "system/message"
+				? { preview: message === null ? "(no system prompt)" : toPreviewLine(textOfBlocks(message.content)), kind: "system" }
+				: message === null
+					? { preview: "(empty)", kind: "assistant" }
+					: previewOfMessage(message, toolNames, display);
 		nodes.push({
 			seq,
 			turn: turnsBySeq.get(seq) ?? null,
 			kind: shape.kind,
 			tokens,
 			preview: shape.preview,
-			validStart: safeBalanced(() => toolPairingBalancedBefore(session, SessionSeq(seq))),
+			// Surface position 0 holding a system/message is the engine-protected
+			// system prompt: a replace starting there is rejected outright, so it
+			// is never offered as a range start.
+			validStart: position === 0 && systemHead ? false : safeBalanced(() => toolPairingBalancedBefore(session, SessionSeq(seq))),
 			validEnd: safeBalanced(() => toolPairingBalancedAfter(session, SessionSeq(seq))),
 			checkpoint: message !== null && message.role === "user" && isCheckpointSource(message),
 			...(shape.toolName !== undefined ? { toolName: shape.toolName } : {}),

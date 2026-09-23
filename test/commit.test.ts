@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Session, SessionSeq, deriveEventMessage } from "@deepseek-ai/dsh-session";
-import { ToolCallId, createAssistantMessage } from "@deepseek-ai/dsh-llm";
+import { ToolCallId, createAssistantMessage, createSystemMessage } from "@deepseek-ai/dsh-llm";
 import { commitClearMind } from "../src/commit.js";
 import { resolveConfig } from "../src/config.js";
 import { isCompactCheckpointSource } from "@deepseek-ai/dsh-compaction";
@@ -63,6 +63,43 @@ test("commitClearMind lands the full compaction transaction and replaces the sur
 	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
 	assert.equal(protocol.replaces, 1);
 	assert.equal(protocol.armedTotal, report.clearedTokens, "armed claim equals reported cleared tokens");
+});
+
+test("'first' skips the protected system prompt head; an explicit head seq is rejected with guidance", () => {
+	const session = Session.create("s1" as never);
+	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(10), "agent-instructions");
+	session.append("system/message", { turn: 0, step: 0, message: system }, { surfaceOp: "append" });
+	const headSeq = session.seq - 1;
+	appendTurn(session, 1, [
+		{ user: "explore approach A " + LOREM.repeat(20) },
+		{ calls: [{ name: "bash", result: LOREM.repeat(60) }] },
+		{ text: "approach A failed because of permissions" }
+	]);
+	appendTurn(session, 2, [
+		{ user: "try approach B " + LOREM.repeat(10) },
+		{ calls: [{ name: "read", result: LOREM.repeat(30) }] }
+	]);
+	session.append("turn/start", { turn: 3 });
+	const meter = replicaMeter();
+	const surfaceBefore = [...session.surface.nodes] as readonly number[];
+	const endSeq = surfaceBefore[surfaceBefore.length - 1];
+	// an explicit head start is rejected up front with an actionable message
+	// (pre-append validation: no compaction bracket is opened)
+	assert.throws(
+		() => commitClearMind({ session, meter, config, route }, headSeq, endSeq, "## Notes\nmust be rejected"),
+		/holds the system prompt/
+	);
+	assert.equal(eventsOf(session).filter((event) => event.type === "compaction/start").length, 0);
+	// "first" resolves PAST the head and commits cleanly
+	const report = commitClearMind({ session, meter, config, route }, "first", endSeq,
+		"## Mission\n- make the build green\n## Abandoned\n- approach A: EACCES");
+	assert.equal(report.kind, "cleared");
+	assert.equal(report.clearedNodes, surfaceBefore.length - 1, "everything except the head");
+	const surface = session.surface.nodes as readonly number[];
+	assert.equal(surface[0], headSeq, "the system prompt head survives on the surface");
+	assert.equal(surface.length, 2, "head + checkpoint");
+	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
+	assert.equal(protocol.replaces, 1);
 });
 
 test("commitClearMind accepts ranges whose start seq is numerically greater than its end (position semantics)", () => {

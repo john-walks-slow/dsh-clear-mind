@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { Session, deriveEventMessage } from "@deepseek-ai/dsh-session";
 import type { SessionHeader, SessionId } from "@deepseek-ai/dsh-session";
-import { ToolCallId, createAssistantMessage } from "@deepseek-ai/dsh-llm";
+import { ToolCallId, createAssistantMessage, createSystemMessage } from "@deepseek-ai/dsh-llm";
 import { scanSurface } from "../src/scan.js";
 import { renderSurvey } from "../src/render.js";
 import { commitClearMind } from "../src/commit.js";
@@ -73,6 +73,33 @@ test("scanSurface marks an in-flight step as unbalanced", () => {
 	assert.equal(open.validEnd, false, "open tool-call cannot be a range end");
 	assert.equal(open.validStart, true, "cut before the open assistant is balanced");
 	assert.equal(survey.latestEndSeq, survey.nodes[survey.nodes.length - 2].seq);
+});
+
+test("scanSurface marks the system prompt head as an unclearable system node", () => {
+	const session = Session.create("s1" as never);
+	const system = createSystemMessage("You are a harness agent with tools.", "agent-instructions");
+	session.append("system/message", { turn: 0, step: 0, message: system }, { surfaceOp: "append" });
+	appendTurn(session, 1, [
+		{ user: "fix the build error in packages/api" },
+		{ calls: [{ name: "bash", result: "npm error code ELIFECYCLE" }] },
+		{ text: "fixed it" }
+	]);
+	const meter = replicaMeter();
+	const survey = scanSurface(session, meter);
+	const head = survey.nodes[0];
+	assert.equal(head.kind, "system", "the head derives a system node");
+	assert.match(head.preview, /harness agent/);
+	assert.equal(head.validStart, false, "no clear_mind range may cover the system prompt head");
+	assert.equal(head.validEnd, true, "cutting right after the head is fine");
+	assert.equal(head.turn, null, "the head predates any turn");
+	// the rendered map never offers the head as a start boundary
+	const headLine = renderSurvey(survey).split("\n").find((line) => line.includes("harness agent")) ?? "";
+	assert.ok(headLine !== "", "head appears in the map");
+	assert.ok(!headLine.includes("▸"), "head line carries no start marker");
+	assert.match(headLine, /system/);
+	// and the first real user node right after it is a valid start
+	assert.equal(survey.nodes[1].kind, "user");
+	assert.equal(survey.nodes[1].validStart, true);
 });
 
 test("scanSurface marks checkpoints after a clear_mind commit", () => {

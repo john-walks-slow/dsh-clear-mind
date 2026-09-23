@@ -29,6 +29,7 @@ import type { ContentBlock, Message } from "@deepseek-ai/dsh-llm";
 import type { TokenMeasurement } from "@deepseek-ai/dsh-token-meter";
 import { randomUUID } from "node:crypto";
 import type { ClearMindConfig } from "./config.js";
+import { isSystemHead } from "./scan.js";
 import type { MeterPort } from "./scan.js";
 
 /** Range endpoints as the model expresses them: a surface seq or a sentinel. */
@@ -59,7 +60,7 @@ const CHECKPOINT_PREAMBLE =
 	"Continue directly from the messages that follow.";
 
 /** Resolve a range endpoint against the current surface. */
-function resolveEndpoint(rawEndpoint: RangeEndpoint, side: "start" | "end", surface: readonly number[], latestEndSeq: number | undefined): number {
+function resolveEndpoint(rawEndpoint: RangeEndpoint, side: "start" | "end", surface: readonly number[], flags: readonly { seq: number; validStart: boolean }[], latestEndSeq: number | undefined): number {
 	let endpoint = rawEndpoint;
 	if (typeof endpoint === "string") {
 		const clean = endpoint.trim().replace(/^["']|["']$/g, "").toLowerCase();
@@ -69,7 +70,11 @@ function resolveEndpoint(rawEndpoint: RangeEndpoint, side: "start" | "end", surf
 	}
 	if (endpoint === "first") {
 		if (surface.length === 0) throw new Error("clear_mind: the surface is empty — nothing to clear.");
-		return surface[0];
+		// The earliest clearable node, NOT surface[0]: node 0 may hold the
+		// engine-protected system prompt, which no range may ever cover.
+		const firstClearable = flags.find((flag) => flag.validStart);
+		if (firstClearable === undefined) throw new Error("clear_mind: no clearable start boundary on the surface — nothing before the current step can start a range.");
+		return firstClearable.seq;
 	}
 	if (endpoint === "latest") {
 		if (latestEndSeq === undefined) throw new Error("clear_mind: no clearable boundary before the current step — nothing to clear yet.");
@@ -95,9 +100,11 @@ function nearestBoundaries(nodes: readonly { seq: number; validStart: boolean; v
 
 /** Fold balance states over the surface once (index-aligned with surface.nodes). */
 function boundaryFlags(session: Session, surface: readonly number[]): { seq: number; validStart: boolean; validEnd: boolean }[] {
-	return surface.map((seq) => ({
+	const systemHead = isSystemHead(session, surface);
+	return surface.map((seq, position) => ({
 		seq,
-		validStart: safe(() => toolPairingBalancedBefore(session, SessionSeq(seq))),
+		// The engine-protected system prompt head can never start a range.
+		validStart: position === 0 && systemHead ? false : safe(() => toolPairingBalancedBefore(session, SessionSeq(seq))),
 		validEnd: safe(() => toolPairingBalancedAfter(session, SessionSeq(seq)))
 	}));
 }
@@ -173,12 +180,13 @@ export function commitClearMind(deps: CommitDeps, start: RangeEndpoint, end: Ran
 		}
 		return undefined;
 	})();
-	const startSeq = resolveEndpoint(start, "start", surface, latestEnd);
-	const endSeq = resolveEndpoint(end, "end", surface, latestEnd);
+	const startSeq = resolveEndpoint(start, "start", surface, flags, latestEnd);
+	const endSeq = resolveEndpoint(end, "end", surface, flags, latestEnd);
 	const startIdx = surface.indexOf(startSeq);
 	const endIdx = surface.indexOf(endSeq);
 	if (startIdx === -1 || endIdx === -1) throw new Error("clear_mind: seq boundaries vanished from the surface between resolution and validation — call mind_map again.");
 	if (startIdx > endIdx) throw new Error("clear_mind: start seq " + startSeq + " (position " + startIdx + ") comes after end seq " + endSeq + " (position " + endIdx + ") on the surface.");
+	if (startIdx === 0 && isSystemHead(session, surface)) throw new Error("clear_mind: seq " + startSeq + " holds the system prompt — no range may cover it. Start at the first clearable node instead ('first' resolves past it).");
 	if (!flags[startIdx].validStart) throw new Error("clear_mind: a range may not start at seq " + startSeq + " — it would split a tool-call/result pair." + nearestBoundaries(flags, startIdx));
 	if (!flags[endIdx].validEnd) throw new Error("clear_mind: a range may not end at seq " + endSeq + " — it would split a tool-call/result pair or the step is still open." + nearestBoundaries(flags, endIdx));
 	const shadowedSeqs = surface.slice(startIdx, endIdx + 1);

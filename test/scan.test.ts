@@ -65,7 +65,7 @@ test("scanSurface marks an in-flight step as unbalanced", () => {
 		content: [{ type: "tool-call", id: ToolCallId("call-open"), name: "bash", arguments: "{}" }],
 		source: { provider: "p", model: "m" }
 	});
-	session.append("assistant/message", { turn: 2, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+	session.append("assistant/message", { turn: 2, step: 1, message: assistant, stream: [] }, { surfaceOp: "append" });
 	assert.ok(session.seq > before);
 	const survey = scanSurface(session, meter);
 	const open = survey.nodes[survey.nodes.length - 1];
@@ -127,7 +127,7 @@ test("renderSurvey omits the playbook when nothing is clearable yet", () => {
 		content: [{ type: "tool-call", id: ToolCallId("call-open"), name: "bash", arguments: "{}" }],
 		source: { provider: "p", model: "m" }
 	});
-	session.append("assistant/message", { turn: 1, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+	session.append("assistant/message", { turn: 1, step: 1, message: assistant, stream: [] }, { surfaceOp: "append" });
 	const survey = scanSurface(session, replicaMeter());
 	assert.equal(survey.latestEndSeq, undefined, "no valid end before the current step");
 	const text = renderSurvey(survey);
@@ -214,7 +214,7 @@ test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
 
 test("call hints relativize workspace paths and abbreviate home like the UI rows", () => {
 	const header: SessionHeader = {
-		version: 0,
+		version: 3,
 		id: "s1" as SessionId,
 		createdAt: Date.now(),
 		cwd: "/workspace/app",

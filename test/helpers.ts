@@ -82,7 +82,7 @@ export function appendTurn(session: Session, turn: number, script: readonly Tran
 				type: "tool-call", id: ToolCallId(nextCallId()), name: call.name, arguments: call.args ?? "{}"
 			}));
 			const assistant = createAssistantMessage({ content: blocks, source: { provider: "test-provider", model: "test-model" } });
-			session.append("assistant/message", { turn, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+			session.append("assistant/message", { turn, step: 1, message: assistant, stream: [] }, { surfaceOp: "append" });
 			for (let index = 0; index < step.calls.length; index++) {
 				const call = step.calls[index];
 				appendToolResult(session, turn, 1, assistant, index, call.result, { isError: call.isError, meta: call.meta });
@@ -90,7 +90,7 @@ export function appendTurn(session: Session, turn: number, script: readonly Tran
 		}
 		if (step.text !== undefined) {
 			const assistant = createAssistantMessage({ content: [{ type: "text", text: step.text }], source: { provider: "test-provider", model: "test-model" } });
-			session.append("assistant/message", { turn, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+			session.append("assistant/message", { turn, step: 1, message: assistant, stream: [] }, { surfaceOp: "append" });
 		}
 	}
 	session.append("turn/end", { turn, reason: { kind: "completed" } });
@@ -100,7 +100,7 @@ export function appendTurn(session: Session, turn: number, script: readonly Tran
 export function appendOpenAssistant(session: Session, turn: number, calls: readonly { name: string }[]): AssistantMessage {
 	const blocks: ContentBlock[] = calls.map((call) => ({ type: "tool-call", id: ToolCallId(nextCallId()), name: call.name, arguments: "{}" }));
 	const assistant = createAssistantMessage({ content: blocks, source: { provider: "test-provider", model: "test-model" } });
-	session.append("assistant/message", { turn, step: 2, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+	session.append("assistant/message", { turn, step: 2, message: assistant, stream: [] }, { surfaceOp: "append" });
 	return assistant;
 }
 
@@ -149,7 +149,7 @@ export function assertShadowPriceProtocol(session: Session, estimate: (message: 
 	let armedTotal = 0;
 	for (let index = 0; index < events.length; index++) {
 		const event = events[index];
-		const op = (event as { surfaceOp?: { op?: string; start?: number; end?: number } }).surfaceOp;
+		const op = (event as { surfaceOp?: { op?: string; startSeq?: number; endSeq?: number; start?: number; end?: number } }).surfaceOp;
 		if (op === undefined || op.op !== "replace") continue;
 		replaces += 1;
 		const previous = events[index - 1];
@@ -157,8 +157,10 @@ export function assertShadowPriceProtocol(session: Session, estimate: (message: 
 			throw new Error("replace at seq " + event.seq + " is not preceded by a shadow-price event");
 		}
 		const shadowedRange = (previous.data as { shadowedRange: { start: number; end: number } }).shadowedRange;
-		if (shadowedRange.start !== op.start || shadowedRange.end !== op.end) {
-			throw new Error("replace at seq " + event.seq + " range " + op.start + "-" + op.end + " does not match armed claim " + shadowedRange.start + "-" + shadowedRange.end);
+		const opStart = op.startSeq ?? op.start;
+		const opEnd = op.endSeq ?? op.end;
+		if (shadowedRange.start !== opStart || shadowedRange.end !== opEnd) {
+			throw new Error("replace at seq " + event.seq + " range " + opStart + "-" + opEnd + " does not match armed claim " + shadowedRange.start + "-" + shadowedRange.end);
 		}
 		const shadowedSeqs = (previous.data as { shadowedSeqs: number[] }).shadowedSeqs;
 		let expected = 0;

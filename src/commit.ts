@@ -221,7 +221,7 @@ export function commitClearMind(deps: CommitDeps, start: RangeEndpoint, end: Ran
 			model: deps.route.model
 		});
 		const checkpointEvent = session.append("user/message", checkpointMessage, {
-			surfaceOp: { op: "replace", start: SessionSeq(startSeq), end: SessionSeq(endSeq) },
+			surfaceOp: { op: "replace", startSeq: SessionSeq(startSeq), endSeq: SessionSeq(endSeq) },
 			sourceEventSeqs: [startEvent.seq, summaryEvent.seq, ...shadowedSeqs.map((seq) => SessionSeq(seq))]
 		});
 		checkpointEventSeq = checkpointEvent.seq;

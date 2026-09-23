@@ -26,12 +26,14 @@
 
 1. replace 区间 = surface 位置语义；seq 非单调，禁止当数值区间比较
 2. replace 前必须紧跟 shadowedRange/shadowedSeqs/shadowedTokenCount 精确匹配的 summary/prune 事件
-3. 禁止在 step 窗口外追加 assistant/message（token meter 会让整个会话 replay 抛错）——可见替换一律 user/message
-4. compaction 括号必须闭合；错误路径 best-effort compaction/end {error}
-5. SessionSeq/CompactionId 是品牌类型，plain number 过不了 tsc
+3. surfaceOp replace 结构必须为严格的 { op: "replace", startSeq, endSeq }（DSH 0.1.5+ 严格校验 startSeq/endSeq，禁止多余键；但 compaction/summary.shadowedRange 仍为 { start, end }）
+4. 禁止在 step 窗口外追加 assistant/message（token meter 会让整个会话 replay 抛错）——可见替换一律 user/message
+5. compaction 括号必须闭合；错误路径 best-effort compaction/end {error}
+6. SessionSeq/CompactionId 是品牌类型，plain number 过不了 tsc
 
 ## Pitfalls（本项目实测）
 
+- SurfaceOp 字段名演进：由旧版 start/end 改为 startSeq/endSeq；本地 node_modules 需同步平台最新 .d.ts，断言避免用 any/可选类型掩盖属性变更
 - read 工具 limit 截断回写曾把 package.json 写坏——改长文件读全或用 edit
 - python yaml 往返会把 YAML1.1 的 off/on 键损坏成 false/true——settings 切片用文本方式
 - tool/result 的 sourceEventSeqs 不能为空（须引用 assistant 事件）；事件字段是 toolCallId 不是 callId

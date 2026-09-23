@@ -197,7 +197,7 @@ export function applyCollapse(session: Session, plan: CollapsePlan): number {
 			summary
 		}
 	}), {
-		surfaceOp: { op: "replace", start: SessionSeq(plan.assistantSeq), end: SessionSeq(lastSeq) },
+		surfaceOp: { op: "replace", startSeq: SessionSeq(plan.assistantSeq), endSeq: SessionSeq(lastSeq) },
 		sourceEventSeqs: [pruneEvent.seq, ...shadowed.map((seq) => SessionSeq(seq))]
 	});
 	return tombstone.seq;

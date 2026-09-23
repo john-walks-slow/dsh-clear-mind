@@ -139,7 +139,7 @@ test("commitClearMind rejects an end inside the in-flight step", () => {
 		content: [{ type: "tool-call", id: ToolCallId("call-open"), name: "bash", arguments: "{}" }],
 		source: { provider: "p", model: "m" }
 	});
-	session.append("assistant/message", { turn: 3, step: 1, message: assistant }, { surfaceOp: "append", sourceEventSeqs: [] });
+	session.append("assistant/message", { turn: 3, step: 1, message: assistant, stream: [] }, { surfaceOp: "append" });
 	const surface = session.surface.nodes as readonly number[];
 	const openSeq = surface[surface.length - 1];
 	assert.throws(

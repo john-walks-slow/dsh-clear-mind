@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Session, SessionSeq, deriveEventMessage } from "@deepseek-ai/dsh-session";
-import { ToolCallId, createAssistantMessage, createSystemMessage } from "@deepseek-ai/dsh-llm";
+import { ToolCallId, createAssistantMessage, createSystemMessage, createToolResultMessage, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { commitClearMind } from "../src/commit.js";
 import { resolveConfig } from "../src/config.js";
 import { isCompactCheckpointSource } from "@deepseek-ai/dsh-compaction";
@@ -123,6 +123,53 @@ test("commitClearMind accepts ranges whose start seq is numerically greater than
 	assert.equal(second.kind, "cleared");
 	const protocol = assertShadowPriceProtocol(session, meter.estimateMessage);
 	assert.equal(protocol.replaces, 2);
+});
+
+test("an off-surface seq (the seq+1 inference trap) is rejected with the nearest on-surface seqs", () => {
+	const session = Session.create("s1" as never);
+	appendTurn(session, 1, [
+		{ user: "explore approach A " + LOREM.repeat(20) },
+		{ calls: [{ name: "bash", result: LOREM.repeat(60) }] },
+		{ text: "approach A summary" }
+	]);
+	// Burn one event id with a non-surface event between two surface nodes —
+	// exactly the engine's tool/call pattern (live incident: luna called
+	// start=2656 where 2655 was the assistant/message and 2656 the tool/call).
+	session.append("turn/start", { turn: 2 });
+	const user2 = createUserMessage({ content: [{ type: "text", text: "try approach B " + LOREM.repeat(20) }], source: { kind: "user" } });
+	session.append("user/message", user2, { surfaceOp: "append" });
+	const callId = ToolCallId("call-burned");
+	const assistant2 = createAssistantMessage({
+		content: [{ type: "tool-call", id: callId, name: "bash", arguments: "{}" }],
+		source: { provider: "test-provider", model: "test-model" }
+	});
+	const assistant2Event = session.append("assistant/message", { turn: 2, step: 1, message: assistant2, stream: [] }, { surfaceOp: "append" });
+	const burnedSeq = session.seq;
+	session.append("tool/call", { turn: 2, step: 1, callId, name: "bash", arguments: "{}" });
+	const result2 = createToolResultMessage({ callId, content: [{ type: "text", text: LOREM.repeat(60) }], isError: false });
+	session.append("tool/result", { turn: 2, step: 1, message: result2 }, { surfaceOp: "append", sourceEventSeqs: [SessionSeq(assistant2Event.seq)] });
+	const text2 = createAssistantMessage({ content: [{ type: "text", text: "approach B summary" }], source: { provider: "test-provider", model: "test-model" } });
+	session.append("assistant/message", { turn: 2, step: 2, message: text2, stream: [] }, { surfaceOp: "append" });
+	session.append("turn/end", { turn: 2, reason: { kind: "completed" } });
+	session.append("turn/start", { turn: 3 });
+	const surface = session.surface.nodes as readonly number[];
+	assert.ok(!surface.includes(burnedSeq), "fixture: the burned id is not on the surface");
+	assert.ok(surface.includes(burnedSeq - 1) && surface.includes(burnedSeq + 1), "fixture: its numeric neighbors are on the surface");
+	const meter = replicaMeter();
+	const endSeq = surface[surface.length - 1];
+	// The rejection carries the correction data: nearest on-surface seqs plus
+	// the anti-pattern callout, so the model fixes its +1 inference in one step
+	// instead of re-mapping and repeating the mistake (luna failed twice).
+	assert.throws(
+		() => commitClearMind({ session, meter, config, route }, burnedSeq, endSeq, "## Notes\nmust be rejected with guidance"),
+		(err: Error) => {
+			assert.match(err.message, /seq \d+ is not on the current surface \(nearest on-surface seqs: /);
+			assert.ok(err.message.includes(String(burnedSeq - 1)) && err.message.includes(String(burnedSeq + 1)), "both numeric neighbors are offered");
+			assert.match(err.message, /never infer seq\+1/);
+			return true;
+		}
+	);
+	assert.equal(eventsOf(session).filter((event) => event.type === "compaction/start").length, 0, "rejected before any bracket opened");
 });
 
 test("two disjoint segments clear in immediate succession without a fresh mind_map (multi-segment batch)", () => {

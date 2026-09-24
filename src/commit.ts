@@ -81,7 +81,23 @@ function resolveEndpoint(rawEndpoint: RangeEndpoint, side: "start" | "end", surf
 		return latestEndSeq;
 	}
 	if (typeof endpoint !== "number" || !Number.isInteger(endpoint) || endpoint < 0) throw new Error("clear_mind: " + side + " must be a surface seq (see mind_map), 'first', or 'latest'.");
-	if (!surface.includes(endpoint)) throw new Error("clear_mind: seq " + endpoint + " is not on the current surface. Call mind_map for the current seq map.");
+	if (!surface.includes(endpoint)) {
+		// The classic caller mistake (seen live twice in a row): reading a valid
+		// boundary N off a map or checkpoint and inferring start = N+1. Seqs are
+		// event-log ids — the surface neighbor after N is often N+2 or beyond
+		// because tool/call and other non-surface events take ids in between.
+		// Hand back the nearest on-surface seqs so the model can correct in one
+		// step instead of re-mapping and repeating the same +1 inference.
+		const near = [...surface]
+			.sort((a, b) => Math.abs(a - endpoint) - Math.abs(b - endpoint))
+			.slice(0, 3)
+			.sort((a, b) => a - b);
+		throw new Error(
+			"clear_mind: seq " + endpoint + " is not on the current surface" +
+			(near.length === 0 ? "" : " (nearest on-surface seqs: " + near.join(", ") + " — never infer seq+1: surface neighbors skip non-surface event ids)") +
+			". Call mind_map for the current seq map."
+		);
+	}
 	return endpoint;
 }
 

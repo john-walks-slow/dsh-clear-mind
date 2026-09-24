@@ -34,6 +34,7 @@
 ## Pitfalls（本项目实测）
 
 - surface node 0 若为 system/message 即系统提示词，平台 assertSystemHeadRewrite 只允许 system/message 精确重写该节点——clear 区间永远不得覆盖它；scan 置 validStart=false、commit 把 "first" 解析为首个 validStart 节点（commit 6ebe6b8）。真实 agent 会话的 head 多为 system/message，而测试 fixture 曾从不构造 system head，导致旧 bug 测试全绿线上必炸——涉及 surface 边界的测试必须含 system head 变体
+- 地图渲染有两条路径：节点级 nodeLine 与 turn 聚合 turnLine——「节点级不再标记 X」类修复必须同步检查聚合路径（turnLine 曾无条件给 run 首节点打 ▸，system head 恰为某 run 首节点时地图照旧误导模型撞防御，commit 5a54384 改为 ▸/◂ 只标 run 内首个 validStart / 末个 validEnd）
 - SurfaceOp 字段名演进：由旧版 start/end 改为 startSeq/endSeq；本地 node_modules 需同步平台最新 .d.ts，断言避免用 any/可选类型掩盖属性变更
 - read 工具 limit 截断回写曾把 package.json 写坏——改长文件读全或用 edit
 - python yaml 往返会把 YAML1.1 的 off/on 键损坏成 false/true——settings 切片用文本方式

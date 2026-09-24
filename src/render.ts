@@ -58,7 +58,7 @@ export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = DEFAULT_
 	if (survey.latestEndSeq === undefined) {
 		lines.push("No clearable boundary before the current step yet — nothing to clear.");
 	} else {
-		lines.push("Range boundaries are marked ▸ (may start a clear) and ◂ (may end a clear); ◆ marks a prior checkpoint. Latest clearable end: seq " + survey.latestEndSeq + ".");
+		lines.push("Range boundaries are marked ▸ (may start a clear) and ◂ (may end a clear); ◆ marks a prior checkpoint. Latest clearable end: seq " + survey.latestEndSeq + " — clearing to the present? pass end:'latest' rather than copying the seq.");
 	}
 	const detailedFrom = survey.nodes.length > RENDER_NODE_LIMIT
 		? survey.nodes.length - RENDER_NODE_LIMIT

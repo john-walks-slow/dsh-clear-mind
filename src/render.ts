@@ -54,7 +54,7 @@ export function renderSurvey(survey: Survey, prompts: PlaybookPrompts = DEFAULT_
 		"Mind surface: " + survey.surfaceNodes + " nodes, ~" + formatTokens(survey.surfaceTokens) +
 		" tokens; request pressure ~" + formatTokens(survey.requestPressureTokens) + " tokens."
 	);
-	lines.push("Seqs are ids in surface order (the list is NOT numeric-sorted after any clear/compaction) — use them as identities, not as an interval. Never infer a boundary as seq+1: surface neighbors skip non-surface event ids.");
+	lines.push("Seqs are ids in surface order (the list is NOT numeric-sorted after any clear/compaction) — use them as identities, not as an interval. Never infer a boundary as seq+1: surface neighbors skip non-surface event ids. A boundary seq must be copied verbatim from this map — never written from memory.");
 	if (survey.latestEndSeq === undefined) {
 		lines.push("No clearable boundary before the current step yet — nothing to clear.");
 	} else {

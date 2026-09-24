@@ -35,6 +35,7 @@
 
 - surface node 0 若为 system/message 即系统提示词，平台 assertSystemHeadRewrite 只允许 system/message 精确重写该节点——clear 区间永远不得覆盖它；scan 置 validStart=false、commit 把 "first" 解析为首个 validStart 节点（commit 6ebe6b8）。真实 agent 会话的 head 多为 system/message，而测试 fixture 曾从不构造 system head，导致旧 bug 测试全绿线上必炸——涉及 surface 边界的测试必须含 system head 变体
 - 地图渲染有两条路径：节点级 nodeLine 与 turn 聚合 turnLine——「节点级不再标记 X」类修复必须同步检查聚合路径（turnLine 曾无条件给 run 首节点打 ▸，system head 恰为某 run 首节点时地图照旧误导模型撞防御，commit 5a54384 改为 ▸/◂ 只标 run 内首个 validStart / 末个 validEnd）
+- 模型高频犯错模式：从地图/checkpoint 读到合法边界 N 后推断 start=N+1——seq 是事件日志号，surface 邻居跳过 tool/call 等非表面事件，N+1 常不存在（luna 曾连续两次同型失败后放弃清理）。校验类错误的消息必须自带纠错数据（如 nearest on-surface seqs），只说"重调 mind_map"会让模型重犯（commit 5366b19）
 - SurfaceOp 字段名演进：由旧版 start/end 改为 startSeq/endSeq；本地 node_modules 需同步平台最新 .d.ts，断言避免用 any/可选类型掩盖属性变更
 - read 工具 limit 截断回写曾把 package.json 写坏——改长文件读全或用 edit
 - python yaml 往返会把 YAML1.1 的 off/on 键损坏成 false/true——settings 切片用文本方式

@@ -57,6 +57,10 @@ export interface SurveyTurn {
 	readonly endSeq: number;
 	readonly nodes: number;
 	readonly tokens: number;
+	/** Earliest seq inside this turn a clear may start at (the run head may be an unclearable system prompt); absent when none. */
+	readonly firstStartSeq?: number;
+	/** Latest seq inside this turn a clear may end at; absent when none. */
+	readonly lastEndSeq?: number;
 	readonly firstUserPreview?: string;
 }
 
@@ -327,7 +331,7 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		});
 	}
 	// Turn summaries fold over the surfaced nodes in order (consecutive runs).
-	const turnRuns: { turn: number; startSeq: number; endSeq: number; nodes: number; tokens: number; firstUserPreview?: string }[] = [];
+	const turnRuns: { turn: number; startSeq: number; endSeq: number; nodes: number; tokens: number; firstStartSeq?: number; lastEndSeq?: number; firstUserPreview?: string }[] = [];
 	for (const node of nodes) {
 		if (node.turn === null) continue;
 		let bucket = turnRuns[turnRuns.length - 1];
@@ -338,6 +342,10 @@ export function scanSurface(session: Session, meter: MeterPort): Survey {
 		bucket.endSeq = node.seq;
 		bucket.nodes += 1;
 		bucket.tokens += node.tokens;
+		// Boundary seqs the aggregated turn line may offer: a run whose head is
+		// the system prompt (validStart false) must not advertise that head.
+		if (node.validStart && bucket.firstStartSeq === undefined) bucket.firstStartSeq = node.seq;
+		if (node.validEnd) bucket.lastEndSeq = node.seq;
 		if (bucket.firstUserPreview === undefined && node.kind === "user" && !node.checkpoint) {
 			bucket.firstUserPreview = node.preview;
 		}

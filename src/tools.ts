@@ -58,6 +58,8 @@ export function mindMapTool(meter: MeterPort, prompts: PlaybookPrompts) {
 								endSeq: { type: "integer", required: true },
 								nodes: { type: "integer", required: true },
 								tokens: { type: "integer", required: true },
+								firstStartSeq: { type: "integer" },
+								lastEndSeq: { type: "integer" },
 								firstUserPreview: { type: "string" }
 							}
 						}

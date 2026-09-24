@@ -34,9 +34,17 @@ function nodeLine(node: SurveyNode): string {
 }
 
 /** One-line summary for a turn whose nodes are aggregated away. */
-function turnLine(turn: { turn: number; startSeq: number; endSeq: number; nodes: number; tokens: number; firstUserPreview?: string }): string {
+function turnLine(turn: { turn: number; startSeq: number; endSeq: number; nodes: number; tokens: number; firstStartSeq?: number; lastEndSeq?: number; firstUserPreview?: string }): string {
 	const label = turn.firstUserPreview === undefined ? "" : " — " + turn.firstUserPreview;
-	return " ▸ " + String(turn.startSeq).padStart(4) + " ◂        turn     " + formatTokens(turn.tokens).padStart(6) + "  [" + turn.nodes + " nodes]" + label;
+	// ▸/◂ mark only boundaries a commit accepts: a run headed by the protected
+	// system prompt (or with no valid boundary at all) shows its plain seqs
+	// without the markers, so the aggregated line can never lure a clear into
+	// an invalid range.
+	const startSeq = turn.firstStartSeq ?? turn.startSeq;
+	const startMark = turn.firstStartSeq !== undefined ? "▸" : " ";
+	const endSeq = turn.lastEndSeq ?? turn.endSeq;
+	const endMark = turn.lastEndSeq !== undefined ? "◂" : " ";
+	return " " + startMark + " " + String(startSeq).padStart(4) + " " + endMark + " " + String(endSeq).padStart(4) + "     turn     " + formatTokens(turn.tokens).padStart(6) + "  [" + turn.nodes + " nodes]" + label;
 }
 
 /** Render the survey as the mind_map tool's model-facing content. */

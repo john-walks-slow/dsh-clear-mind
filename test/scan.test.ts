@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { Session, deriveEventMessage } from "@deepseek-ai/dsh-session";
 import type { SessionHeader, SessionId } from "@deepseek-ai/dsh-session";
-import { ToolCallId, createAssistantMessage, createSystemMessage } from "@deepseek-ai/dsh-llm";
+import { ToolCallId, createAssistantMessage, createSystemMessage, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { scanSurface } from "../src/scan.js";
+import type { Survey, SurveyNode } from "../src/scan.js";
 import { renderSurvey } from "../src/render.js";
 import { commitClearMind } from "../src/commit.js";
 import { resolveConfig } from "../src/config.js";
@@ -100,6 +101,61 @@ test("scanSurface marks the system prompt head as an unclearable system node", (
 	// and the first real user node right after it is a valid start
 	assert.equal(survey.nodes[1].kind, "user");
 	assert.equal(survey.nodes[1].validStart, true);
+});
+
+test("a system prompt head inside a turn run never becomes the turn's advertised start", () => {
+	// Realistic shape: the engine appends system/message inside a turn, so the
+	// protected head can be a turn run's FIRST node — the aggregated turn line
+	// must not offer that head as a ▸ start (live incident: turn 20 · ▸ 7876).
+	const session = Session.create("s1" as never);
+	session.append("turn/start", { turn: 1 });
+	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(5), "agent-instructions");
+	session.append("system/message", { turn: 1, step: 0, message: system }, { surfaceOp: "append" });
+	const headSeq = session.seq - 1;
+	const user = createUserMessage({ content: [{ type: "text", text: "ship the feature " + LOREM.repeat(10) }], source: { kind: "user" } });
+	session.append("user/message", user, { surfaceOp: "append" });
+	const reply = createAssistantMessage({ content: [{ type: "text", text: "done" }], source: { provider: "p", model: "m" } });
+	session.append("assistant/message", { turn: 1, step: 1, message: reply, stream: [] }, { surfaceOp: "append" });
+	session.append("turn/end", { turn: 1, reason: { kind: "completed" } });
+	const meter = replicaMeter();
+	const survey = scanSurface(session, meter);
+	const head = survey.nodes[0];
+	assert.equal(head.kind, "system");
+	assert.equal(head.validStart, false, "surface position 0 holds the protected system prompt");
+	assert.equal(head.turn, 1, "the head is attributed to the turn that appended it");
+	const run = survey.turns[0];
+	assert.equal(run.startSeq, headSeq, "the run starts at the head");
+	assert.equal(run.firstStartSeq, survey.nodes[1].seq, "the run advertises the first VALID start, not the head");
+	assert.equal(run.lastEndSeq, survey.nodes[2].seq, "the run advertises its last valid end");
+	// Aggregated rendering (surface over the render limit forces turn lines):
+	// a hand-built survey keeps the same shape with the head-led run first.
+	const tail: SurveyNode[] = [];
+	for (let index = 0; index < 150; index++) {
+		tail.push({ seq: 100 + index, turn: 2, kind: "assistant", tokens: 10, preview: "tail " + index, validStart: true, validEnd: true, checkpoint: false });
+	}
+	const map = renderSurvey({
+		kind: "survey",
+		surfaceNodes: 151,
+		surfaceTokens: 4500,
+		requestPressureTokens: 4500,
+		latestEndSeq: 249,
+		turns: [
+			{ turn: 1, startSeq: headSeq, endSeq: headSeq, nodes: 1, tokens: 3000, lastEndSeq: headSeq },
+			{ turn: 2, startSeq: 100, endSeq: 249, nodes: 150, tokens: 1500, firstStartSeq: 100, lastEndSeq: 249 }
+		],
+		nodes: [
+			{ seq: headSeq, turn: 1, kind: "system", tokens: 3000, preview: "You are a harness agent", validStart: false, validEnd: true, checkpoint: false },
+			...tail
+		]
+	});
+	const lines = map.split("\n");
+	const headLine = lines.find((line) => line.includes("[1 nodes]")) ?? "";
+	assert.ok(headLine !== "", "head-led turn renders as an aggregated turn line");
+	assert.ok(!headLine.includes("▸"), "head-led turn line carries no start marker");
+	assert.ok(headLine.includes(String(headSeq)), "the head seq is still visible as the run's span");
+	const tailLine = lines.find((line) => line.includes("[150 nodes]")) ?? "";
+	assert.match(tailLine, /▸ +100/, "a normal aggregated turn still marks its valid start");
+	assert.match(tailLine, /◂ +249/, "a normal aggregated turn still marks its valid end");
 });
 
 test("scanSurface marks checkpoints after a clear_mind commit", () => {

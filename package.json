@@ -1,6 +1,6 @@
 {
   "name": "dsh-clear-mind",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Model-autonomous context compaction for DeepSeek Harness: mind_map surveys the agent's own context surface (seqs, token weights, clear-boundary markers and the clear-mind playbook), clear_mind replaces a chosen span with a model-written checkpoint through the platform's native compaction transaction, and a proactive reminder nudges the model when the context grows long. dsh-clear-mind：让模型自主压缩自身上下文——mind_map 俯瞰上下文表面（seq/token/清理边界标记 + 清理手册），clear_mind 把一段对话历史替换成模型自写的检查点（走平台原生 compaction 事务，GUI 可展开审计），上下文涨长或单轮步数过多时主动提醒模型清理。",
   "type": "module",
   "main": "./dist/src/index.js",

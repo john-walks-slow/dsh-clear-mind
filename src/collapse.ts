@@ -21,8 +21,17 @@
 
 import { Session, SessionSeq, deriveEventMessage } from "@deepseek-ai/dsh-session";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
-import type { ContentBlock, Message } from "@deepseek-ai/dsh-llm";
+import type { ContentBlock, ContextFormed, Message } from "@deepseek-ai/dsh-llm";
 import type { MeterPort } from "./scan.js";
+
+/** Producer-owned source kind for this plugin's collapse tombstones. */
+declare module "@deepseek-ai/dsh-llm" {
+	interface MessageSourceMap {
+		"dsh-clear-mind": {
+			kind: "dsh-clear-mind";
+		} & ContextFormed;
+	}
+}
 
 /** One clear_mind or mind_map call+results run scheduled to collapse. */
 export interface CollapsePlan {
@@ -53,9 +62,8 @@ function toolCallsOf(message: Message): ToolCallShape[] {
 }
 
 function toolResultBlock(message: Message): { toolCallId?: string; isError?: boolean } | undefined {
-	const first = message.content[0] as { type?: string; toolCallId?: string; isError?: boolean } | undefined;
-	if (first === undefined || first.type !== "tool-result") return undefined;
-	return first;
+	if (message.role !== "tool") return undefined;
+	return message;
 }
 
 /** Read the clear_mind commit stats one tool/result persisted in its meta. */
@@ -191,8 +199,7 @@ export function applyCollapse(session: Session, plan: CollapsePlan): number {
 	const tombstone = session.append("user/message", createUserMessage({
 		content: [{ type: "text", text }],
 		source: {
-			kind: "plugin",
-			plugin: CLEAR_MIND_PLUGIN,
+			kind: CLEAR_MIND_PLUGIN,
 			form: "notice",
 			summary
 		}

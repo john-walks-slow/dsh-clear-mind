@@ -67,7 +67,7 @@ test("commitClearMind lands the full compaction transaction and replaces the sur
 
 test("'first' skips the protected system prompt head; an explicit head seq is rejected with guidance", () => {
 	const session = Session.create("s1" as never);
-	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(10), "agent-instructions");
+	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(10));
 	session.append("system/message", { turn: 0, step: 0, message: system }, { surfaceOp: "append" });
 	const headSeq = session.seq - 1;
 	appendTurn(session, 1, [

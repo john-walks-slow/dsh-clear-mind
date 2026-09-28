@@ -78,7 +78,7 @@ test("scanSurface marks an in-flight step as unbalanced", () => {
 
 test("scanSurface marks the system prompt head as an unclearable system node", () => {
 	const session = Session.create("s1" as never);
-	const system = createSystemMessage("You are a harness agent with tools.", "agent-instructions");
+	const system = createSystemMessage("You are a harness agent with tools.");
 	session.append("system/message", { turn: 0, step: 0, message: system }, { surfaceOp: "append" });
 	appendTurn(session, 1, [
 		{ user: "fix the build error in packages/api" },
@@ -109,7 +109,7 @@ test("a system prompt head inside a turn run never becomes the turn's advertised
 	// must not offer that head as a ▸ start (live incident: turn 20 · ▸ 7876).
 	const session = Session.create("s1" as never);
 	session.append("turn/start", { turn: 1 });
-	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(5), "agent-instructions");
+	const system = createSystemMessage("You are a harness agent with tools. " + LOREM.repeat(5));
 	session.append("system/message", { turn: 1, step: 0, message: system }, { surfaceOp: "append" });
 	const headSeq = session.seq - 1;
 	const user = createUserMessage({ content: [{ type: "text", text: "ship the feature " + LOREM.repeat(10) }], source: { kind: "user" } });
@@ -297,7 +297,7 @@ test("assistant call previews mirror the UI's unexpanded-row summaries", () => {
 
 test("call hints relativize workspace paths and abbreviate home like the UI rows", () => {
 	const header: SessionHeader = {
-		version: 3,
+		version: 4,
 		id: "s1" as SessionId,
 		createdAt: Date.now(),
 		cwd: "/workspace/app",

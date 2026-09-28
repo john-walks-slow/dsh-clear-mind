@@ -60,7 +60,7 @@ test("applyCollapse replaces the pair with a visible user-notice tombstone and h
 	assert.ok(tombstoneEvent !== undefined && tombstoneEvent.type === "user/message", "tombstone is a user-role notice");
 	const message = deriveEventMessage(tombstoneEvent);
 	assert.ok(message !== null, "tombstone derives to a visible message");
-assert.equal((tombstoneEvent.data as { source: { kind: string; plugin: string } }).source.plugin, "dsh-clear-mind");
+assert.equal((tombstoneEvent.data as { source: { kind: string } }).source.kind, "dsh-clear-mind");
 	assert.match((message.content[0] as { text: string }).text, new RegExp("clear-mind: cleared " + report.clearedNodes + " messages \\(~" + report.clearedTokens + " tokens\\) into checkpoint seq"));
 	// pairing stays balanced across the whole surface after the collapse
 	for (const seq of after) {

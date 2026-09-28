@@ -16,7 +16,7 @@ import {
 	isSurfaceEvent
 } from "@deepseek-ai/dsh-session";
 import { toolPairingBalancedAfter, toolPairingBalancedBefore } from "@deepseek-ai/dsh-compaction";
-import { compactCheckpointSource } from "@deepseek-ai/dsh-compaction";
+import { compactCheckpointSource, isCompactCheckpointSource } from "@deepseek-ai/dsh-compaction";
 import type { ContentBlock, Message } from "@deepseek-ai/dsh-llm";
 import type { TokenMeasurement } from "@deepseek-ai/dsh-token-meter";
 
@@ -232,12 +232,11 @@ function textOfBlocks(blocks: readonly ContentBlock[]): string {
 
 /** Build the one-line preview for a derived message. */
 function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, string>, display: RowDisplayContext): { preview: string; kind: "user" | "assistant" | "tool"; toolName?: string; isError?: boolean } {
-	if (message.role === "user" && message.content.length > 0 && message.content[0].type === "tool-result") {
-		const result = message.content[0];
-		const preview = toPreviewLine(textOfBlocks(result.content));
-		const name = toolNames.get(result.toolCallId);
-		const prefix = (name !== undefined ? name : "tool") + (result.isError === true ? " ! " : ": ");
-		return { preview: prefix + preview, kind: "tool", toolName: name, isError: result.isError === true };
+	if (message.role === "tool") {
+		const preview = toPreviewLine(textOfBlocks(message.content));
+		const name = toolNames.get(String(message.toolCallId));
+		const prefix = (name !== undefined ? name : "tool") + (message.isError === true ? " ! " : ": ");
+		return { preview: prefix + preview, kind: "tool", toolName: name, isError: message.isError === true };
 	}
 	if (message.role === "assistant") {
 		const calls = message.content.filter((block): block is Extract<ContentBlock, { type: "tool-call" }> => block.type === "tool-call");
@@ -252,8 +251,7 @@ function previewOfMessage(message: Message, toolNames: ReadonlyMap<string, strin
 
 /** Whether a user message source marks it as a compaction checkpoint. */
 function isCheckpointSource(message: Message): boolean {
-	const source = message.source as Record<string, unknown>;
-	return source.kind === "plugin" && source.plugin === "compact" && typeof source.compactionId === "string";
+	return isCompactCheckpointSource(message.source) && typeof message.source.compactionId === "string";
 }
 
 /**

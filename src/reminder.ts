@@ -15,13 +15,22 @@
  */
 
 import type { Agent } from "@deepseek-ai/dsh-agent";
-import type { UserMessage } from "@deepseek-ai/dsh-llm";
+import type { ContextFormed, UserMessage } from "@deepseek-ai/dsh-llm";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { MeterPort } from "./scan.js";
 import { tryAgentRoute } from "./route.js";
 import type { ClearMindConfig } from "./config.js";
 import type { PlaybookPrompts } from "./prompts.js";
 import { DEFAULT_PLAYBOOK } from "./prompts.js";
+
+/** Producer-owned source kind for this plugin's proactive reminders. */
+declare module "@deepseek-ai/dsh-llm" {
+	interface MessageSourceMap {
+		"dsh-clear-mind": {
+			kind: "dsh-clear-mind";
+		} & ContextFormed;
+	}
+}
 
 /** Port for resolving the routed model's context window. */
 export interface ModelInfoPort {
@@ -63,8 +72,7 @@ export function buildReminderMessage(trigger: ReminderTrigger, prompts: Playbook
 	return createUserMessage({
 		content: [{ type: "text", text: renderReminderText(trigger, prompts) }],
 		source: {
-			kind: "plugin",
-			plugin: PLUGIN_NAME,
+			kind: PLUGIN_NAME,
 			form: "notice",
 			summary: "clear-mind proactive reminder"
 		} as const

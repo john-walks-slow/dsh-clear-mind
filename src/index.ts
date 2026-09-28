@@ -72,7 +72,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		agent.ctx.tools.register(mindMapTool(meter, prompts));
 		agent.ctx.tools.register(clearMindTool(meter, resolved));
 	};
-	ctx.on("agent/created", ({ agent }: { agent: Agent }) => {
+	ctx.on("agent/created", async ({ agent }: { agent: Agent }) => {
 		registerOne(agent);
 	});
 	for (const existing of ctx.agents.roots()) {

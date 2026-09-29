@@ -8,8 +8,30 @@
  */
 
 import * as React from "react";
-import type { SettingsScope, SettingsScopeSnapshot } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { installStyles } from "./styles.js";
+
+/**
+ * The settings editor surface shared by every feature that owns a preference:
+ * a `configForms` snapshot store with serialized writes back to the Host. Exposed
+ * through the settings.section inject face as `scope` (kept under that name so
+ * the panel code reads naturally).
+ */
+export interface SettingsScope<T> {
+	getSnapshot(): SettingsScopeSnapshot<T>;
+	subscribe(listener: () => void): () => void;
+	set<K extends keyof T>(field: K, value: T[K]): Promise<boolean>;
+	unset<K extends keyof T>(field: K): Promise<boolean>;
+}
+
+export interface SettingsScopeSnapshot<T> {
+	status: "loading" | "ready" | "unavailable";
+	value?: T;
+	base?: T;
+	user?: Partial<T>;
+	revision?: number;
+	writable: boolean;
+	mode: "host" | "memory";
+}
 
 /** The config shape (mirrors ClearMindConfig from config.ts). */
 export interface ClearMindSettings {

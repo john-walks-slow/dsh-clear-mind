@@ -54,17 +54,17 @@ const PlaybookOverrideSchema = z.object({
 }) as unknown as Schema<PlaybookOverride>;
 
 export const Config = z.object({
-	minClearTokens: z.number().step(1).min(1).default(1000),
-	minNotesChars: z.number().step(1).min(1).default(200),
-	maxNotesChars: z.number().step(1).min(1).default(16000),
-	selfCollapse: z.boolean().default(true),
+	minClearTokens: z.number().step(1).min(1).default(1000).volatile(),
+	minNotesChars: z.number().step(1).min(1).default(200).volatile(),
+	maxNotesChars: z.number().step(1).min(1).default(16000).volatile(),
+	selfCollapse: z.boolean().default(true).volatile(),
 	playbook: PlaybookOverrideSchema.default({}),
 	presetPlaybook: z.dict(PlaybookOverrideSchema).default({}),
-	reminderEnabled: z.boolean().default(true),
-	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70),
-	reminderThresholdTokens: z.number().step(1).min(0).default(0),
-	reminderThresholdSteps: z.number().step(1).min(1).default(100),
-	reminderStepInterval: z.number().step(1).min(1).default(25)
+	reminderEnabled: z.boolean().default(true).volatile(),
+	reminderThresholdRatio: z.number().min(0.01).max(1).default(0.70).volatile(),
+	reminderThresholdTokens: z.number().step(1).min(0).default(0).volatile(),
+	reminderThresholdSteps: z.number().step(1).min(1).default(100).volatile(),
+	reminderStepInterval: z.number().step(1).min(1).default(25).volatile()
 });
 
 export interface ClearMindConfig {

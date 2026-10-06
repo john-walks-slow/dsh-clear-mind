@@ -97,7 +97,7 @@ export function mindMapTool(meter: MeterPort, prompts: PlaybookPrompts) {
 }
 
 /** Build the clear_mind tool definition bound to a meter port and config. */
-export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
+export function clearMindTool(meter: MeterPort, readConfig: () => ClearMindConfig) {
 	return defineTool({
 		name: "clear_mind",
 		description:
@@ -158,7 +158,7 @@ export function clearMindTool(meter: MeterPort, config: ClearMindConfig) {
 		async execute(args, exec) {
 			const agent = requireAgent(exec.agent);
 			return commitClearMind(
-				{ session: agent.session, meter, config, route: requireRoute(agent) },
+				{ session: agent.session, meter, config: readConfig(), route: requireRoute(agent) },
 				args.start,
 				args.end,
 				args.notes

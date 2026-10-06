@@ -2,17 +2,24 @@
  * dsh-clear-mind client half: registers the Clear Mind settings page as a
  * settings.section contribution in the DSH Web settings shell.
  *
- * The page binds the `clear-mind` settings namespace through a
- * `configForms` form (the 0.1.7 replacement for the removed `settingsScope`
- * service) and renders a form for every configuration knob. Saves hot-apply
- * without a restart — the host-side watch callback mutates the live config
- * object.
+ * The page binds the entry-id settings namespace through a `configForms`
+ * form and renders a form for every volatile configuration knob. Saves
+ * hot-apply without a restart — the host loader commits volatile values
+ * into the running config references (loader/volatile-update).
+ *
+ * The entry id is NOT "clear-mind": on 0.1.7+ the settings service keys
+ * forms by the profile entry id (`- id: clear-mind` in cordis.patch.yml),
+ * so the page follows the served namespace via whileServed and stays hidden
+ * on deployments that never composed this plugin.
  */
 
 import * as React from "react";
 import { SettingsPanel } from "./settings-panel.js";
 import type { ClearMindSettings, SettingsScope } from "./settings-panel.js";
 import type { SettingsSectionOwnerProps } from "@deepseek-ai/dsh-client-ui-settings/client";
+
+/** This plugin's profile entry id (cordis.patch.yml `- id: clear-mind`). */
+const ENTRY_ID = "clear-mind";
 
 /** Minimal structural client context (the shell binds these services). */
 interface SlotEntry {
@@ -25,20 +32,22 @@ interface SlotEntry {
 }
 
 interface ClientCtx {
+	effect(dispose: () => () => void): () => void;
 	slots: {
-		inject(id: string, factory: () => unknown): void;
-		register<T extends SlotEntry>(entry: T, component: React.ComponentType<SettingsSectionOwnerProps & ReturnType<NonNullable<T["inject"]>>>): unknown;
+		inject(id: string, factory: () => () => void): () => void;
+		register<T extends SlotEntry>(entry: T, component: React.ComponentType<SettingsSectionOwnerProps & ReturnType<NonNullable<T["inject"]>>>): () => void;
 	};
 	configForms: {
 		get(namespace: string): SettingsScope<ClearMindSettings>;
+		whileServed(namespaces: readonly string[], register: (served: ReadonlySet<string>) => () => void): () => void;
 	};
 }
 
 export const inject = ["slots", "configForms"];
 
 export function apply(ctx: ClientCtx): void {
-	const form = ctx.configForms.get("clear-mind");
-	ctx.slots.inject(
+	const form = ctx.configForms.get(ENTRY_ID);
+	ctx.effect(() => ctx.configForms.whileServed([ENTRY_ID], () => ctx.slots.inject(
 		"settings.section",
 		() => ctx.slots.register(
 			{
@@ -52,5 +61,5 @@ export function apply(ctx: ClientCtx): void {
 			},
 			SettingsPanel
 		)
-	);
+	)));
 }

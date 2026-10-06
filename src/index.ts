@@ -21,6 +21,7 @@
  */
 
 import type { Context } from "@deepseek-ai/cordis";
+import type { Volatile } from "@deepseek-ai/cosmokit";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { Config, resolveConfig } from "./config.js";
@@ -36,8 +37,45 @@ export const name = "dsh-clear-mind";
 export const inject = ["tools", "tokenMeter", "agents", "llm"];
 export { Config };
 
-export function apply(ctx: Context, config: Record<string, unknown> = {}) {
-	const resolved = resolveConfig(config);
+/**
+ * The validated live config the platform hands to apply — every knob the
+ * settings page edits arrives as a Volatile<T> reference the loader commits
+ * in place (loader/volatile-update), so reads below always observe the
+ * current value without a restart or a watch callback. Plain (non-volatile)
+ * fields — the playbook text overrides — are read once from the composition.
+ */
+interface LiveConfig {
+	readonly minClearTokens: Volatile<number>;
+	readonly minNotesChars: Volatile<number>;
+	readonly maxNotesChars: Volatile<number>;
+	readonly selfCollapse: Volatile<boolean>;
+	readonly reminderEnabled: Volatile<boolean>;
+	readonly reminderThresholdRatio: Volatile<number>;
+	readonly reminderThresholdTokens: Volatile<number>;
+	readonly reminderThresholdSteps: Volatile<number>;
+	readonly reminderStepInterval: Volatile<number>;
+	readonly playbook?: unknown;
+	readonly presetPlaybook?: unknown;
+}
+
+/** Project the live volatile references onto a plain snapshot for one use. */
+function snapshot(live: LiveConfig): ClearMindConfig {
+	return resolveConfig({
+		minClearTokens: live.minClearTokens.get(),
+		minNotesChars: live.minNotesChars.get(),
+		maxNotesChars: live.maxNotesChars.get(),
+		selfCollapse: live.selfCollapse.get(),
+		playbook: live.playbook as Record<string, unknown> | undefined,
+		presetPlaybook: live.presetPlaybook as Record<string, Record<string, unknown>> | undefined,
+		reminderEnabled: live.reminderEnabled.get(),
+		reminderThresholdRatio: live.reminderThresholdRatio.get(),
+		reminderThresholdTokens: live.reminderThresholdTokens.get(),
+		reminderThresholdSteps: live.reminderThresholdSteps.get(),
+		reminderStepInterval: live.reminderStepInterval.get()
+	});
+}
+
+export function apply(ctx: Context, config: LiveConfig) {
 	const meter: MeterPort = {
 		measure: (session) => ctx.tokenMeter.measure(session),
 		estimateMessage: (message) => ctx.tokenMeter.estimateMessage(message)
@@ -62,15 +100,20 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 	// operator's overrides — `presetPlaybook[agentPreset]` first, then the
 	// global `playbook`, then the built-in text. A preset is durable per
 	// session, so the resolved wording is captured at registration time;
-	// config edits reach sessions created afterwards.
+	// ordinary-config edits remount the plugin, volatile edits need no
+	// re-registration (tool closures read a fresh snapshot per call).
 	const registered = new WeakSet<Agent>();
+	const liveSnapshot = (): ClearMindConfig => snapshot(config);
 	const registerOne = (agent: Agent) => {
 		if (registered.has(agent)) return;
 		if (!ctx.agents.roots().includes(agent)) return;
 		registered.add(agent);
-		const prompts = resolvePlaybook(resolved, agent.session.header.agentPreset);
+		const read = liveSnapshot();
+		const prompts = resolvePlaybook(read, agent.session.header.agentPreset);
 		agent.ctx.tools.register(mindMapTool(meter, prompts));
-		agent.ctx.tools.register(clearMindTool(meter, resolved));
+		// The tool closures read a fresh snapshot per execution so
+		// settings-page writes apply without re-registration or restart.
+		agent.ctx.tools.register(clearMindTool(meter, liveSnapshot));
 	};
 	ctx.on("agent/created", async ({ agent }: { agent: Agent }) => {
 		registerOne(agent);
@@ -80,32 +123,16 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 	}
 
 	// Optional settings namespace registration: lets the Web UI read and
-	// hot-edit every config knob without a restart. Degrades to a logged
-	// no-op on headless profiles that lack a settings service.
-	const settings = ctx.get("settings", false);
-	if (settings !== undefined && typeof (settings as { register?: unknown }).register === "function") {
-		try {
-			const scope = (settings as { register: (ns: string, schema: unknown, opts?: unknown) => { watch: (cb: (next: ClearMindConfig) => void) => () => void; get: () => ClearMindConfig } }).register("clear-mind", Config, { base: resolved });
-			scope.watch((next: ClearMindConfig) => {
-				try {
-					Object.assign(resolved, resolveConfig(next));
-					ctx.logger.info("dsh-clear-mind: settings hot-applied");
-				} catch (error) {
-					// Cross-field validation can reject a user save (e.g.
-					// minNotesChars >= maxNotesChars). Keep the previous live
-					// config so the runtime never drifts from a consistent state;
-					// the settings UI surfaces its own cross-field error.
-					ctx.logger.warn("dsh-clear-mind: settings update rejected (" + (error instanceof Error ? error.message : String(error)) + "); keeping previous live config");
-				}
-			});
-			Object.assign(resolved, resolveConfig(scope.get()));
-			ctx.logger.info("dsh-clear-mind: settings namespace `clear-mind` registered; hot-reload enabled");
-		} catch (error) {
-			ctx.logger.warn("dsh-clear-mind: settings registration failed (" + (error instanceof Error ? error.message : String(error)) + ")");
-		}
-	} else {
-		ctx.logger.info("dsh-clear-mind: no settings service composed; configuration UI and hot-reload disabled");
-	}
+	// hot-edit every volatile config knob without a restart. On 0.1.7+ the
+	// settings service discovers forms from the plugin Config schema
+	// automatically (fields marked .volatile()), so the host side only
+	// declares its page policy; on older platforms without the new service
+	// this degrades to a logged no-op. Business reads go through the live
+	// ctx.config references directly (Volatile<T>.get()), and updates arrive
+	// via loader/volatile-update.
+	ctx.inject(["settings"], (child) => {
+		child.effect(() => (child as unknown as { settings: { configure: (p: { auto: boolean }, owner?: unknown) => () => void } }).settings.configure({ auto: false }, ctx.fiber));
+	});
 
 	// Self-collapse + proactive reminder at the step boundary. The self-collapse
 	// runs BEFORE next() (it mutates the surface the downstream listeners see);
@@ -116,7 +143,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		next: () => Promise<PreStepDecision>
 	): Promise<PreStepDecision> => {
 		// Self-collapse: fold every completed clear_mind call+result pair.
-		if (resolved.selfCollapse && registered.has(payload.agent)) {
+		if (liveSnapshot().selfCollapse && registered.has(payload.agent)) {
 			try {
 				collapseClearMindRuns(payload.agent.session, meter);
 			} catch (error) {
@@ -129,12 +156,13 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
 		// Proactive reminder: nudge the model when context is long or a turn
 		// has run too many steps.
 		try {
+			const read = liveSnapshot();
 			const trigger = await evaluateReminder(
-				resolved, payload.agent, meter, modelInfo,
+				read, payload.agent, meter, modelInfo,
 				payload.turn, payload.step, payload.signal, reminderStates
 			);
 			if (trigger !== null) {
-				const prompts = resolvePlaybook(resolved, payload.agent.session.header.agentPreset);
+				const prompts = resolvePlaybook(read, payload.agent.session.header.agentPreset);
 				return { ...decision, messages: [...decision.messages, buildReminderMessage(trigger, prompts)] };
 			}
 		} catch (error) {

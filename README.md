@@ -5,7 +5,7 @@
   <a href="./README.en.md"><strong>English</strong></a>
 </p>
 
-让模型自主压缩自身上下文的 DeepSeek Harness 插件（cordis plugin）：当失败探索和大输出把上下文拖累时，模型调用 `clear_mind`「清空脑子」——把一段对话历史替换成自己写的检查点，只留笔记，释放注意力与 token 预算。人类侧的会话记录始终原样保留，每次清理在 GUI 里都是一条可展开的压缩行。
+让模型自主压缩指定区间上下文的 DeepSeek Harness 插件（cordis plugin）：当失败探索和大输出把上下文拖累时，模型调用 `clear_mind`「清空脑子」——把选定区间的对话历史替换成自己写的检查点，只留笔记，释放注意力与 token 预算。人类侧的会话记录始终原样保留，每次清理在 GUI 里都是一条可展开的压缩行。
 
 
 ![dsh-clear-mind in the DSH settings: proactive reminder thresholds and compaction guards](assets/screenshot-1.png)

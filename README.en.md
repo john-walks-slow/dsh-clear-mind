@@ -143,3 +143,7 @@ git push --follow-tags
 ```
 
 Verify with `npm view dsh-clear-mind version`. When releasing several packages, check "do not challenge for the next 5 minutes" on the webauthn page to publish them all with one fingerprint.
+
+## Community
+
+- Thanks to the [LINUX DO](https://linux.do/) community for providing the discussion environment.

@@ -153,3 +153,7 @@ git push --follow-tags
 ```
 
 发布后 `npm view dsh-clear-mind version` 复验。批量发多个包时，在指纹页勾选“5 分钟内同 IP 不再挑战”，一次指纹即可连发。
+
+## 社区
+
+- 感谢 [LINUX DO](https://linux.do/) 社区提供的交流环境。
